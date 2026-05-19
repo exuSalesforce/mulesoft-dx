@@ -123,9 +123,7 @@ make build-asset-files
 
 This regenerates `src/generated/config.rs` so the policy's Rust code can reference the configuration as typed structs. **Do not hand-edit `src/generated/`** — it gets overwritten on every `build-asset-files` run.
 
-The developer's actual policy logic lives in `src/lib.rs` (the entry point) and any helper modules they add — that's design work outside this skill's scope. If the developer asks for examples of common patterns (header manipulation, JWT validation, HTTP calls, rate limiting, etc.), point them at the public examples repo: https://github.com/mulesoft/pdk-examples.
-
-> **Note:** A dedicated PDK examples skill is being tracked in [W-22456751](https://gus.lightning.force.com/lightning/r/ADM_Work__c/a07EE00002Zt4fKYAR/view) and will surface these patterns directly through Claude. Until that lands, the public repo is the canonical source.
+The developer's actual policy logic lives in `src/lib.rs` (the entry point) and any helper modules they add — that's design work outside this skill's scope.
 
 ## Step 6: Build the Policy
 
@@ -299,7 +297,7 @@ If traffic still hits the old behavior after both steps, confirm in Runtime Mana
 - **PDK prerequisites:** https://docs.mulesoft.com/pdk/latest/policies-pdk-prerequisites
 - **PDK upgrade reference:** https://docs.mulesoft.com/pdk/latest/policies-pdk-upgrade-pdk
 - **PDK overview:** https://docs.mulesoft.com/pdk/latest/
-- **Public examples:** https://github.com/mulesoft/pdk-examples
+- **Custom policy examples (docs):** https://docs.mulesoft.com/pdk/latest/policies-pdk-policy-templates
 
 ---
 
