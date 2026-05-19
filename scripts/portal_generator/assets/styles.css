@@ -421,52 +421,9 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* MuleSoft header styling */
-.ms-com-content-header,
-.ms-com-content-header.lined {
-    border-bottom: 2px solid var(--color-border-primary) !important;
-    border-bottom-color: var(--color-border-primary) !important;
-}
-
-/* On detail pages, make MuleSoft header non-sticky */
 body.detail-page {
     padding-top: 0;
 }
-
-body.detail-page .ms-com-content-header,
-body.detail-page .ms-com-header {
-    position: relative !important;
-    z-index: 200;
-}
-
-/* MuleSoft chrome header — dark mode overrides.
-   Same pattern as the footer: the header HTML + CSS is fetched from mulesoft.com
-   and hardcodes a white background. Flip the background + text to dark tokens. */
-/* [data-theme="dark"] .ms-com-content-header, */
-[data-theme="dark"] .ms-com-header,
-[data-theme="dark"] .ms-com-header .header-wrapper {
-    background: var(--color-bg-primary) !important;
-    color: var(--color-text-primary) !important;
-}
-
-[data-theme="dark"] .ms-com-content-header {
-    border-bottom-color: var(--color-border-primary) !important;
-    box-shadow: 0px 1px 1px var(--color-border-primary) !important;
-}
-
-[data-theme="dark"] .ms-com-content-header .logo {
-    background-position: -173px -179px !important;
-}
-
-/* [data-theme="dark"] .ms-com-header a, */
-[data-theme="dark"] .ms-com-header .menu-item>span {
-    color: var(--color-text-primary) !important;
-}
-
-/* [data-theme="dark"] .ms-com-header a:hover,
-[data-theme="dark"] .ms-com-header .menu-item>a:hover {
-    color: var(--color-text-link) !important;
-} */
 
 /* Dark mode toggle button */
 .dark-mode-toggle {
@@ -720,9 +677,6 @@ code {
    Hero
    ============================================================================ */
 
-.ms-com-content-header + main#main-content {
-    margin-top: 75px;
-}
 
 .hero {
     position: relative;
@@ -2484,9 +2438,6 @@ code {
     filter: invert(1) hue-rotate(180deg) brightness(0.9);
 }
 
-[data-theme="dark"] .ms-com-content-header header.ms-com-header.desktop-header .header-inside .right-side>.contact>* {
-    color: white !important;
-}
 
 /* Contribute footer — bottom-of-page CTA on detail pages. */
 aside.contribute-footer {
@@ -5530,6 +5481,85 @@ details[open] .examples-toggle-icon {
     grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: var(--space-large);
+}
+
+/* Homepage header variant */
+.homepage-header-bar {
+    grid-template-columns: auto 1fr;
+}
+
+.homepage-logo-link {
+    height: auto;
+}
+
+.homepage-sprite-logo {
+    display: block;
+    width: 150px;
+    height: 55px;
+    background-image: url('https://www.mulesoft.com/sites/default/files/cmm_files/new-graphics-WES_updated121423.svgz');
+    background-position: -2px -179px;
+    background-size: 406px;
+    background-repeat: no-repeat;
+}
+
+[data-theme="dark"] .homepage-sprite-logo {
+    background-position: -173px -179px;
+}
+
+.homepage-contact-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.homepage-contact-label {
+    color: #00A2DF;
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-medium);
+}
+
+.homepage-phone {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-3);
+}
+
+.homepage-cta-btn {
+    display: inline-block;
+    padding: 8px 24px;
+    height: 44px;
+    background: #2E844A;
+    border: 2px solid #2E844A;
+    border-radius: 4px;
+    color: #fff;
+    line-height: 24px;
+    font-size: 16px;
+    font-weight: var(--font-weight-bold);
+    text-decoration: none;
+    margin-left: 10px;
+    transition: opacity 0.2s;
+}
+
+.homepage-cta-btn:hover {
+    opacity: 0.9;
+    color: #fff;
+}
+
+@media (max-width: 768px) {
+    .homepage-contact-group {
+        display: none;
+    }
+
+    .homepage-sprite-logo {
+        width: 120px;
+        height: 44px;
+        background-size: 325px;
+        background-position: -1.6px -143px;
+    }
+
+    [data-theme="dark"] .homepage-sprite-logo {
+        background-position: -138px -143px;
+    }
 }
 
 .auth-panel-center {
