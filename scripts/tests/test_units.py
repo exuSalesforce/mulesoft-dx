@@ -243,7 +243,7 @@ class TestSkillTitle:
         assert _skill_title('apply-policy-to-api-instance') == 'Apply Policy To API Instance'
 
     def test_mcp_uppercase(self):
-        assert _skill_title('protect-mcp-server-with-policies') == 'Protect MCP Server With Policies'
+        assert _skill_title('secure-mcp-server') == 'Secure MCP Server'
 
     def test_multiple_acronyms(self):
         assert _skill_title('setup-api-with-oauth') == 'Setup API With Oauth'
@@ -258,7 +258,7 @@ class TestSkillTitle:
         assert _skill_title('api') == 'API'
 
     def test_already_spaced(self):
-        assert _skill_title('protect api with policies') == 'Protect API With Policies'
+        assert _skill_title('secure api') == 'Secure API'
 
 
 # ============================================================================
