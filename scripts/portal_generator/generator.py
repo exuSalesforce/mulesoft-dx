@@ -214,6 +214,8 @@ class PortalGenerator:
         self._generate_schemas()
         self._generate_agents_md()
         self._generate_llms_txt()
+        self._generate_markdown_pages()
+        self._generate_headers()
         self._generate_css()
         self._generate_js()
         self._copy_images()
@@ -734,11 +736,101 @@ class PortalGenerator:
         content = template.render(
             base_url=self.base_url,
             apis=self.public_apis,
+            mcp_servers=self.public_mcps,
             all_skills=self.all_skills,
         )
         output_path = self.output_dir / 'llms.txt'
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(content)
+
+    def _generate_markdown_pages(self):
+        """Generate .md alternatives for all HTML pages (AI-readiness)."""
+        print("  ✓ Generating markdown page alternatives...")
+        count = 0
+
+        # Homepage
+        tmpl = self.env.get_template('markdown/homepage.md.html')
+        md = tmpl.render(
+            base_url=self.base_url,
+            apis=self.public_apis,
+            mcp_servers=self.public_mcps,
+            all_skills=self.all_skills,
+            terraform_providers=self.terraform_providers,
+        )
+        (self.output_dir / 'index.md').write_text(md, encoding='utf-8')
+        count += 1
+
+        # API pages
+        api_tmpl = self.env.get_template('markdown/api_page.md.html')
+        for api in self.public_apis:
+            md = api_tmpl.render(base_url=self.base_url, api=api)
+            (self.output_dir / 'apis' / f"{api['slug']}.md").write_text(md, encoding='utf-8')
+            count += 1
+
+        # MCP pages
+        if self.public_mcps:
+            mcp_tmpl = self.env.get_template('markdown/mcp_page.md.html')
+            for mcp in self.public_mcps:
+                md = mcp_tmpl.render(base_url=self.base_url, mcp=mcp)
+                (self.output_dir / 'mcps' / f"{mcp['slug']}.md").write_text(md, encoding='utf-8')
+                count += 1
+
+        # Skill pages
+        skill_tmpl = self.env.get_template('markdown/skill_page.md.html')
+        for skill in self.all_skills:
+            md = skill_tmpl.render(base_url=self.base_url, skill=skill)
+            (self.output_dir / 'skills' / f"{skill['slug']}.md").write_text(md, encoding='utf-8')
+            count += 1
+
+        print(f"    • {count} markdown pages generated")
+
+    def _generate_headers(self):
+        """Generate _headers file for CDN/hosting cache control."""
+        print("  ✓ Generating _headers file...")
+        headers = """/llms.txt
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Content-Type: text/plain; charset=utf-8
+
+/AGENTS.md
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Content-Type: text/markdown; charset=utf-8
+
+/registry.json
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/index.md
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Content-Type: text/markdown; charset=utf-8
+
+/apis/*.md
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Content-Type: text/markdown; charset=utf-8
+
+/mcps/*.md
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Content-Type: text/markdown; charset=utf-8
+
+/skills/*.md
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Content-Type: text/markdown; charset=utf-8
+
+/apis/*.yaml
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/mcps/*/mcp.yaml
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/skills/*/SKILL.md
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+  Content-Type: text/markdown; charset=utf-8
+
+/schemas/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
+/assets/*
+  Cache-Control: public, max-age=604800, immutable
+"""
+        (self.output_dir / '_headers').write_text(headers, encoding='utf-8')
 
     def _generate_css(self):
         """Generate styles.css"""
