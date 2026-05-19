@@ -2,7 +2,7 @@
 name: develop-pdk-policy
 description: Drive the full lifecycle of a custom Flex Gateway policy with the Policy Development Kit (PDK) — verify prerequisites, scaffold the project, edit the gcl.yaml schema, build the WebAssembly artifact, exercise it locally with the Docker playground, then publish a dev version and cut a release to Anypoint Exchange. Use this skill whenever the user mentions PDK, Flex Gateway custom policies, `anypoint-cli-v4 pdk`, `cargo anypoint`, `make build` / `make publish` / `make release`, the `wasm32-wasip1` target, or asks to "create a custom policy", "scaffold a PDK project", "build a Flex Gateway policy", "publish a policy to Exchange", "test my policy locally", "upgrade PDK", or troubleshoots a PDK build / publish / release failure — even if they don't use the word "PDK" explicitly.
 license: Apache-2.0
-compatibility: Requires Anypoint CLI v4 with the `anypoint-pdk-plugin` (PDK 1.7.0+) installed, Rust toolchain (rustc + cargo), `cargo-anypoint` plugin, `make`, and Docker (for the local playground in Step 7). Assumes `wasm32-wasip1` target is installed.
+compatibility: Requires Anypoint CLI v4 with the `anypoint-pdk-plugin` (PDK 1.8.0+) installed, Rust toolchain (rustc + cargo), `make`, and Docker (for the local playground in Step 7). Assumes `wasm32-wasip1` target is installed. `cargo-anypoint` is installed automatically by `make setup` in Step 4 — it is not a manual prerequisite.
 metadata:
   author: mule-dx-tooling
   version: "1.0.0"
@@ -27,22 +27,21 @@ anypoint-cli-v4 --version
 anypoint-cli-v4 plugins
 ```
 
-The plugin list must include `anypoint-pdk-plugin`. If you see the older `anypoint-cli-pdk-plugin` (PDK < 1.7.0), tell the user to upgrade:
+The plugin list must include `anypoint-pdk-plugin`. If you see the older `anypoint-cli-pdk-plugin` (PDK < 1.8.0), tell the user to upgrade:
 
 ```bash
 anypoint-cli-v4 plugins:uninstall anypoint-cli-pdk-plugin
 anypoint-cli-v4 plugins:install anypoint-pdk-plugin
 ```
 
-**Check Rust and `cargo-anypoint`:**
+**Check Rust:**
 
 ```bash
 rustc --version
 cargo --version
-cargo anypoint --version
 ```
 
-If `cargo anypoint` is not installed, the developer must install it. The exact version is set by the `Makefile` of each policy project (see Step 4) — for a brand-new install before any project exists, point the user to the prerequisites doc rather than guessing a version.
+`cargo-anypoint` is **not** checked here — `make setup` in Step 4 installs the version pinned by the project's `Makefile` automatically.
 
 **Check the WASM target:**
 
@@ -105,7 +104,7 @@ Install the project's pinned `cargo-anypoint` version and any other tooling the 
 make setup
 ```
 
-This is what aligns the developer's toolchain to the version of `cargo-anypoint` that the project's `Makefile` declares. Do **not** skip it even if `cargo anypoint --version` already worked in Step 1 — the project may pin a different version than what's globally installed.
+**Heads-up — this changes the global `cargo-anypoint` install.** Under the hood, `make setup` runs `cargo install cargo-anypoint@<pinned-version>` (plus `cargo-llvm-cov`), which installs to `~/.cargo/bin/`. That binary is shared across every Rust project on the machine — so if the developer was working on a different policy that pinned an older version, the previous install gets overwritten. This is expected and how `cargo install` works; it just means the developer's "global" `cargo-anypoint` always reflects the most recently set-up policy.
 
 **Common issues:**
 
@@ -125,6 +124,8 @@ make build-asset-files
 This regenerates `src/generated/config.rs` so the policy's Rust code can reference the configuration as typed structs. **Do not hand-edit `src/generated/`** — it gets overwritten on every `build-asset-files` run.
 
 The developer's actual policy logic lives in `src/lib.rs` (the entry point) and any helper modules they add — that's design work outside this skill's scope. If the developer asks for examples of common patterns (header manipulation, JWT validation, HTTP calls, rate limiting, etc.), point them at the public examples repo: https://github.com/mulesoft/pdk-examples.
+
+> **Note:** A dedicated PDK examples skill is being tracked in [W-22456751](https://gus.lightning.force.com/lightning/r/ADM_Work__c/a07EE00002Zt4fKYAR/view) and will surface these patterns directly through Claude. Until that lands, the public repo is the canonical source.
 
 ## Step 6: Build the Policy
 
@@ -284,9 +285,14 @@ After completing the lifecycle, verify:
 
 ### Policy applied successfully but does not run on traffic
 
-**Cause:** The dev/release version was published but the API instance in API Manager is still pinned to an older version, or the policy is disabled.
+**Cause:** A custom policy in API Manager has two moving parts — the **definition version** (the schema / config shape) and the **implementation version** (the WASM artifact published by `make publish` / `make release`). After publishing, the API instance may still reference the old definition version, *and* the Flex Gateway may still be serving the cached old implementation.
 
-**Fix:** In API Manager, open the API instance, find the policy in the applied policies list, and confirm the version matches what was just published. Toggle disable/enable to force a refresh if needed.
+**Fix:** Both parts may need a nudge:
+
+1. **Bump the definition version on the API instance.** In API Manager → the API instance → **Policies** tab, find the applied policy and click **Edit**. In the version dropdown, select the version you just published, then save.
+2. **Force the implementation refresh.** Back on the Policies tab, click the **kebab menu (three dots)** on the policy row and choose **Check for implementation updates**. This makes Flex re-fetch the WASM instead of serving its cached copy.
+
+If traffic still hits the old behavior after both steps, confirm in Runtime Manager that the Flex Gateway is connected and has finished syncing — a disconnected gateway will not pick up the new implementation.
 
 ## Additional Resources
 
