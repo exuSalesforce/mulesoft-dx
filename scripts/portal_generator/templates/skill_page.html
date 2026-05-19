@@ -3,6 +3,10 @@
 
 {% block title %}{{ skill_name }} - Anypoint Platform APIs{% endblock %}
 
+{% block markdown_alternate %}
+<link rel="alternate" type="text/markdown" href="{{ base_url }}/skills/{{ skill.slug }}.md">
+{% endblock %}
+
 {% block body_attrs %} class="detail-page skill-page"{% endblock %}
 
 {% block head_scripts %}

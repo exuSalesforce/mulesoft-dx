@@ -416,7 +416,7 @@ class TestHomepageAgentLinks:
     def test_has_llms_txt_head_link(self):
         link = self.soup.find('link', attrs={'href': lambda v: v and 'llms.txt' in v})
         assert link is not None
-        assert link.get('type') == 'text/plain'
+        assert link.get('rel') == ['llms-txt']
 
     def test_has_registry_json_head_link(self):
         link = self.soup.find('link', attrs={'href': lambda v: v and 'registry.json' in v})
