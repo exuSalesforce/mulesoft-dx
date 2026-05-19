@@ -40,8 +40,11 @@ jobs:
 
       - name: Remove POC directory from Akamai
         run: |
-          echo "Removing POC from TEST environment | Host=${AKAMAI_HOST} POC=${POC_NAME}"
-          lftp -u "sshacs,dummy" -e "set sftp:connect-program 'ssh -o BatchMode=yes -o StrictHostKeyChecking=no -i ~/.ssh/akamai_key'; rm -rf /564243/api-portal.mulesoft.com/test/pocs/${POC_NAME}; quit" sftp://${AKAMAI_HOST} || true
+          echo "Removing POC from TEST environment | POC=${POC_NAME}"
+          lftp -u "${AKAMAI_USER},${AKAMAI_PASS}" -e "set sftp:connect-program 'ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -i ~/.ssh/akamai_key'; rm -rf ${AKAMAI_BASE_PATH}/test/pocs/${POC_NAME}; quit" "sftp://${AKAMAI_HOST}" || true
         env:
-          AKAMAI_HOST: 564243.sftp.upload.akamai.com
+          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
+          AKAMAI_USER: ${{ secrets.AKAMAI_USER }}
+          AKAMAI_PASS: ${{ secrets.AKAMAI_PASS }}
+          AKAMAI_BASE_PATH: ${{ secrets.AKAMAI_BASE_PATH }}
           POC_NAME: ${{ steps.poc.outputs.name }}
