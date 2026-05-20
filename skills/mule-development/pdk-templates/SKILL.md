@@ -29,6 +29,7 @@ Trigger on any request shaped like "how do I <thing> in PDK?", "show me a PDK te
    - Rename functions if the user's `lib.rs` already defines `request_filter` / `response_filter` / `configure`.
    - Wire any references to `Config` to the user's actual `gcl.yaml` property names. The templates use placeholder names like `exampleService`, `exampleDateweaveProperty`, `example-hmac-secret-with-256-bits-long`. Replace them.
    - For features that read configuration (`dataweave`, `http_call`, `grpc`, etc.), make sure the user's `definition/gcl.yaml` declares the matching `properties:` block — see "Multi-file features" below for which property name each template expects.
+   - **Trim what the user didn't ask for.** Many templates (`header_manipulation`, `body_manipulation`, `body_stream`, `dataweave`, `http_call`, `grpc`, `cors`) ship with both a `request_filter` and a `response_filter` to show every injection point. If the user only asked about request-side behavior (or only response-side), call out which half they can delete and remove the corresponding `.on_response(...)` / `.on_request(...)` from the launcher builder. Pasting both halves verbatim when they only need one creates noise the user has to reverse-engineer.
 4. **For multi-file bundles**, deliver every file in the bundle and tell the user explicitly where each goes in their project tree. Do not deliver only `lib.rs` and let the user discover later that they also need a `gcl.yaml` change or a Cargo dep.
 5. After editing, suggest the user re-run `make build-asset-files` (only if `gcl.yaml` changed — that regenerates `src/generated/config.rs`) and `make build`.
 
@@ -135,6 +136,11 @@ Some features need more than just a `src/lib.rs` change. Always deliver the whol
   - `[dependencies]` add `protobuf = "3.5.0"`.
   - `[build-dependencies]` add `protobuf-codegen = "3.5.0"`.
 - After all edits, run `make build-asset-files` then `make build`.
+
+**Filename consistency gotcha.** If you rename `proto/example.proto` to something more meaningful (e.g. `proto/user.proto` for a `UserService`), three places must agree or the build breaks:
+1. The `.proto` file's path on disk.
+2. `build.rs` line `.input("proto/<name>.proto")`.
+3. The `lib.rs` import `use crate::<name>::{...};` — `protobuf-codegen` emits one Rust module per `.proto` file, named after the file stem. Keep all three in sync.
 
 ### `outbound/` — `templates/outbound/gcl.yaml`
 
