@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - **`develop-pdk-policy`** — new skill that drives the full lifecycle of a custom Flex Gateway policy with the Policy Development Kit (PDK): prerequisite checks, `anypoint-cli-v4 pdk policy-project create`, `make setup` / `build-asset-files` / `build`, local execution via the scaffolded `playground/` (`make run` against a Dockerized Flex Gateway in local-disconnected mode), then `make publish` and `make release` to Anypoint Exchange. Includes an upgrade-PDK runbook and troubleshooting for the most common toolchain failure modes. Lets agents take a developer from "I want a custom policy" through to a released Exchange asset without leaving the IDE.
+- **`pdk-templates`** — companion prose-only reference skill bundling 30 vetted, compilable PDK feature templates locally under `templates/`. Pulled from the upstream `mulesoft-mcp-server` `mule-flex-pdk-service` snapshots so the skill works offline with no MCP dependency. Covers JWT (validate + generate), OAuth2 introspection, header/body manipulation, body streaming, rate limiting, spike control, caching, distributed locks, worker variables, control flow, contracts, CORS, IP filtering, JSON/XML validators, outbound HTTP calls, gRPC, DataWeave evaluation, data storage, timers, logging, metadata, policy violations, `stop_iteration`, outbound-policy marker, and PDK unit testing setup. Multi-file bundles (`grpc/`, `dataweave/`, `http_call/`, `stop_iteration/`) ship as subdirectories with explicit destination guidance for each companion file (`Cargo.toml.snippet`, `gcl.yaml`, `build.rs`, `proto/`). Pairs with `develop-pdk-policy`, which owns scaffold/build/publish lifecycle.
+
+### Changed
+
+- `package.json` `files` array now includes `*/templates/**` (added alongside `*/references/**`) so the bundled PDK templates ship in the published tarball.
 
 ## [1.0.3] - 2026-05-14
 
