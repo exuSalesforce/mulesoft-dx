@@ -1379,8 +1379,9 @@ code {
 
 @media (max-width: 768px) {
     .catalog-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 389px);
         gap: 36px 0;
+        justify-content: center;
     }
 
     .catalog-results-header {
@@ -5389,10 +5390,6 @@ details[open] .examples-toggle-icon {
 @media (max-width: 768px) {
     .hero h2 {
         font-size: var(--font-size-9);
-    }
-
-    .catalog-grid {
-        grid-template-columns: 1fr;
     }
 
     .catalog-controls {
