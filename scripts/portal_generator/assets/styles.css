@@ -1348,17 +1348,32 @@ code {
     }
 
     .catalog-results-header {
-        grid-template-columns: repeat(2, minmax(0, 389px));
-        gap: 32px;
-        justify-content: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-md);
+        align-items: center;
     }
 
     .catalog-search-and-results {
-        grid-column: 1 / 2;
+        flex: 1 1 0;
+        min-width: 0;
+        grid-column: unset;
     }
 
     .catalog-controls-right {
-        grid-column: 2;
+        grid-column: unset;
+        flex-shrink: 0;
+    }
+
+    .results-count {
+        white-space: normal;
+        flex-shrink: 1;
+        min-width: 0;
+    }
+
+    .tag-search-wrapper {
+        min-width: 0;
+        flex: 1 1 200px;
     }
 }
 
