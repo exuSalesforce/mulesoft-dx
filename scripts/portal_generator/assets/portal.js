@@ -1656,6 +1656,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize playground steps in skills
     initializePlaygroundSteps();
 
+    // At <=1200px, mark try-response panels as empty so placeholder shows
+    if (window.innerWidth <= 1200) {
+        document.querySelectorAll('.try-response').forEach(function(el) {
+            if (!el.querySelector('.try-response-body.active')?.textContent.trim()) {
+                el.classList.add('empty');
+            }
+        });
+    }
+
     // Build available tags from catalog
     buildAvailableTags();
 

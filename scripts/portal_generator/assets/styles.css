@@ -3351,6 +3351,121 @@ button.nav-group-header {
     text-align: center;
 }
 
+/* Try panel: always expanded below 1200px */
+@media (max-width: 1200px) {
+    .operation-content-wrapper {
+        flex-direction: column;
+    }
+
+    .operation-try-panel {
+        width: 100%;
+        max-width: none;
+        position: static;
+        height: auto;
+        order: 1;
+        margin-bottom: var(--space-lg);
+    }
+
+    .operation-main-content {
+        width: 100%;
+        order: 2;
+    }
+
+    .btn-expand-try {
+        display: none;
+    }
+
+    .operation-try-panel .try-it-out {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: var(--space-lg);
+        align-items: start;
+        flex-direction: unset;
+        height: auto;
+    }
+
+    .operation-try-panel .try-form-container {
+        grid-column: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-sm);
+        min-width: 0;
+        overflow-x: hidden;
+    }
+
+    .operation-try-panel .try-form-container input,
+    .operation-try-panel .try-form-container select,
+    .operation-try-panel .try-form-container textarea {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .operation-try-panel .try-params,
+    .operation-try-panel .try-body,
+    .operation-try-panel .try-server-vars {
+        min-width: 0;
+    }
+
+    .operation-try-panel .try-body-content {
+        min-width: 0;
+    }
+
+    .operation-try-panel .request-editor-wrapper {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .operation-try-panel .try-response {
+        grid-column: 2;
+        grid-row: 1;
+        margin-top: 0 !important;
+        min-height: 400px;
+        align-self: stretch;
+        border: 1px solid var(--color-neutral-5);
+        padding: var(--space-xs);
+        display: flex !important;
+        flex-direction: column;
+        border-radius: var(--radius-medium);
+        background: var(--color-neutral-2);
+    }
+
+    .operation-try-panel .try-response.empty {
+        background: var(--color-neutral-2);
+        border: 1px solid var(--color-neutral-5);
+        justify-content: center;
+        align-items: center;
+    }
+
+    .operation-try-panel .try-response.empty > * {
+        display: none !important;
+    }
+
+    .operation-try-panel .try-response.empty::before {
+        content: "Click Send to get a response";
+        padding: var(--space-lg);
+        color: var(--color-neutral-7);
+        font-size: var(--font-size-4);
+        text-align: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .operation-try-panel .try-it-out {
+        grid-template-columns: 1fr !important;
+    }
+
+    .operation-try-panel .try-response {
+        grid-column: 1;
+        grid-row: auto;
+    }
+
+    .operation-try-panel .try-form-container input,
+    .operation-try-panel .try-form-container select,
+    .operation-try-panel .try-form-container textarea {
+        width: 100%;
+    }
+}
+
 /* ============================================================================
    Shared Operation Panel Grid Layout
    Used in: Try-It-Out Expanded, X-Origin Modal, Playground Mode
