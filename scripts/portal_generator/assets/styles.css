@@ -8408,6 +8408,51 @@ code[class*="language-"][class*="language-"] {
     min-height: 0;
 }
 
+/* Execution panel and step grid: responsive below 1200px */
+@media (max-width: 1200px) {
+    .detail-content {
+        overflow: hidden;
+    }
+
+    .skill-content-unified {
+        flex-direction: column;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .skill-main-content {
+        max-width: 100%;
+    }
+
+    .content-section {
+        overflow: hidden;
+    }
+
+    .skill-detail {
+        overflow: hidden !important;
+    }
+
+    .execution-panel {
+        width: 100% !important;
+        flex: none !important;
+        position: static !important;
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        order: -1;
+        margin-bottom: var(--space-lg);
+    }
+
+    .operation-panel-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .operation-panel-response {
+        grid-column: 1;
+        grid-row: auto;
+    }
+}
+
 /* Variables Toolbar */
 .variables-toolbar {
     display: flex;
