@@ -63,8 +63,7 @@ fn rejected_request_emits_violation() {
     );
 
     // Once the policy is wired to emit violations, replace the policy name
-    // with whatever your `gcl.yaml` declares (run `make show-policy-ref-name`
-    // or read `target/policy-ref-name.txt`).
+    // with whatever `metadata.labels.title` declares in `definition/gcl.yaml`.
     assert_eq!(response.status_code(), 401);
     assert_violation_generated(&response, "your-policy-id");
 }

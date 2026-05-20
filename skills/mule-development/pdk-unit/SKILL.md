@@ -198,4 +198,3 @@ The complete `pdk-unit` API surface — every `UnitTestBuilder` method, the requ
 - **`pdk-templates/templates/unit_testing.md`** — full `pdk-unit` API reference (sibling skill).
 - **`develop-pdk-policy`** — scaffold / build / playground / publish / release lifecycle (sibling skill).
 - **PDK overview**: https://docs.mulesoft.com/pdk/latest/
-- **Note**: `https://docs.mulesoft.com/pdk/latest/policies-pdk-unit-tests` does not currently exist as a public page. This skill plus `unit_testing.md` is the primary reference for PDK unit testing.

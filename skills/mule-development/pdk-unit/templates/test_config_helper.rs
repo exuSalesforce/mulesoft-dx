@@ -9,9 +9,7 @@
 // Drop into `src/tests/common.rs`. Adapt the property names in
 // `TestConfig::build()` to whatever your `definition/gcl.yaml` declares.
 
-use pdk_unit::{
-    Backend, UnitHttpMessage, UnitHttpRequest, UnitHttpResponse, UnitTest, UnitTestBuilder,
-};
+use pdk_unit::{Backend, UnitHttpRequest, UnitHttpResponse, UnitTest, UnitTestBuilder};
 use serde_json::json;
 use std::time::Duration;
 
