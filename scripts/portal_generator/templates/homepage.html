@@ -63,7 +63,7 @@
                         </div>
                         <div class="tag-suggestions" id="tagSuggestions" style="display: none;"></div>
                     </div>
-                    <h2 class="results-count"><span id="resultsType">All</span> (<span id="resultsCount">{{ apis|length + (mcp_servers|length if mcp_servers else 0) + (all_skills|length if all_skills else 0) + (terraform_providers|length if terraform_providers else 0) }}</span> Results)</h2>
+                    <h2 class="results-count"><span id="resultsType">All</span> (<span id="resultsCount">{{ apis|length + (mcp_servers|length if mcp_servers else 0) + (all_skills|length if all_skills else 0) + (terraform_providers|length if terraform_providers else 0) }}</span> Results)<span id="sortIndicator" class="sort-indicator" style="display: none;"> · Sort by <span id="sortLabel">Name</span></span></h2>
                 </div>
                 <div class="catalog-controls-right">
                     <button class="sort-btn" aria-label="Sort options">
@@ -82,7 +82,7 @@
                                 <select id="sortBy" class="sort-modal-select">
                                     <option value="name">Name</option>
                                     <option value="type">Type</option>
-                                    <option value="endpoints">Endpoints</option>
+                                    <option value="count">Count</option>
                                 </select>
                             </div>
 

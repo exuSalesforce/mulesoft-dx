@@ -104,6 +104,20 @@ class TestHomepageStructure:
         link = self.soup.find('a', href=lambda h: h and 'test-api' in h)
         assert link is not None
 
+    def test_has_sort_indicator(self):
+        indicator = self.soup.find(id='sortIndicator')
+        assert indicator is not None
+        assert indicator.get('style') == 'display: none;'
+        label = indicator.find(id='sortLabel')
+        assert label is not None
+
+    def test_sort_options_use_count_not_endpoints(self):
+        sort_select = self.soup.find(id='sortBy')
+        assert sort_select is not None
+        options = [opt.get('value') for opt in sort_select.find_all('option')]
+        assert 'count' in options
+        assert 'endpoints' not in options
+
 
 class TestDetailPageStructure:
     @pytest.fixture(autouse=True)

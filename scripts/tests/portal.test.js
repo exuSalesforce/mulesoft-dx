@@ -1597,3 +1597,43 @@ describe('copyTerraformCode', () => {
     });
 });
 
+// ===========================================================================
+// getSortDisplayLabel
+// ===========================================================================
+describe('getSortDisplayLabel', () => {
+    test('returns "Name" for name sort regardless of filter', () => {
+        expect(getSortDisplayLabel('name', 'all')).toBe('Name');
+        expect(getSortDisplayLabel('name', 'api')).toBe('Name');
+        expect(getSortDisplayLabel('name', 'mcp')).toBe('Name');
+    });
+
+    test('returns "Type" for type sort regardless of filter', () => {
+        expect(getSortDisplayLabel('type', 'all')).toBe('Type');
+        expect(getSortDisplayLabel('type', 'api')).toBe('Type');
+    });
+
+    test('returns "Endpoints" for count sort when filtered to api', () => {
+        expect(getSortDisplayLabel('count', 'api')).toBe('Endpoints');
+    });
+
+    test('returns "Tools" for count sort when filtered to mcp', () => {
+        expect(getSortDisplayLabel('count', 'mcp')).toBe('Tools');
+    });
+
+    test('returns "Steps" for count sort when filtered to skill', () => {
+        expect(getSortDisplayLabel('count', 'skill')).toBe('Steps');
+    });
+
+    test('returns "Docs" for count sort when filtered to terraform', () => {
+        expect(getSortDisplayLabel('count', 'terraform')).toBe('Docs');
+    });
+
+    test('returns "Count" for count sort when showing all', () => {
+        expect(getSortDisplayLabel('count', 'all')).toBe('Count');
+    });
+
+    test('returns "Count" for count sort with unknown filter', () => {
+        expect(getSortDisplayLabel('count', 'unknown')).toBe('Count');
+    });
+});
+

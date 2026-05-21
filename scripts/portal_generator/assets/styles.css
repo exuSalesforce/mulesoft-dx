@@ -913,6 +913,12 @@ code {
     color: var(--color-text-secondary);
 }
 
+.sort-indicator {
+    font-size: var(--font-size-2);
+    font-weight: var(--font-weight-normal);
+    color: var(--color-text-secondary);
+}
+
 /* Catalog Stats (used in API detail overview) */
 .overview-header {
     display: flex;

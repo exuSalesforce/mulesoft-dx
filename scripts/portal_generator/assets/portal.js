@@ -8055,6 +8055,14 @@ function toggleParamDescription(button) {
 // Sort Modal Functionality
 // ============================================================================
 
+function getSortDisplayLabel(sortBy, filterType) {
+    if (sortBy === 'count') {
+        var countLabels = { api: 'Endpoints', mcp: 'Tools', skill: 'Steps', terraform: 'Docs' };
+        return countLabels[filterType] || 'Count';
+    }
+    return sortBy === 'name' ? 'Name' : 'Type';
+}
+
 (function() {
     const sortBtn = document.querySelector('.sort-btn');
     const sortModal = document.getElementById('sortModal');
@@ -8084,7 +8092,43 @@ function toggleParamDescription(button) {
         const direction = sortDirectionSelect.value;
 
         sortCatalog(sortBy, direction);
+        updateSortIndicator(sortBy);
         sortModal.style.display = 'none';
+    });
+
+    function getActiveFilterType() {
+        var activeTab = document.querySelector('.hero-tab.active');
+        return activeTab ? activeTab.dataset.filter : 'all';
+    }
+
+    function updateSortIndicator(sortBy) {
+        var indicator = document.getElementById('sortIndicator');
+        var label = document.getElementById('sortLabel');
+        if (!indicator || !label) return;
+
+        var filterType = getActiveFilterType();
+        label.textContent = getSortDisplayLabel(sortBy, filterType);
+        indicator.style.display = 'inline';
+    }
+
+    function resetSort() {
+        var indicator = document.getElementById('sortIndicator');
+        if (indicator) indicator.style.display = 'none';
+        sortBySelect.value = 'name';
+        sortDirectionSelect.value = 'asc';
+    }
+
+
+    // Listen for filter changes (hero tab clicks)
+    document.querySelectorAll('.hero-tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            resetSort();
+            var filterType = tab.dataset.filter || 'all';
+            var typeOption = sortBySelect.querySelector('option[value="type"]');
+            if (typeOption) {
+                typeOption.disabled = filterType !== 'all';
+            }
+        });
     });
 
     function sortCatalog(sortBy, direction) {
@@ -8115,8 +8159,7 @@ function toggleParamDescription(button) {
                 const aName = a.getAttribute('data-name') || '';
                 const bName = b.getAttribute('data-name') || '';
                 return aName.localeCompare(bName);
-            } else if (sortBy === 'endpoints') {
-                // Extract count from the badge text (endpoints for APIs, steps for Skills)
+            } else if (sortBy === 'count') {
                 const aCard = a.querySelector('.badge-count');
                 const bCard = b.querySelector('.badge-count');
 
