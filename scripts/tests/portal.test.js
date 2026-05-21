@@ -1637,3 +1637,186 @@ describe('getSortDisplayLabel', () => {
     });
 });
 
+// ===========================================================================
+// loginBearer / loginOAuth2 — error handling
+// ===========================================================================
+
+function setupAuthDom() {
+    document.body.innerHTML = `
+        <div id="authMessage"></div>
+        <input id="authUsername" value="user@test.com" />
+        <input id="authPassword" value="wrongpass" />
+        <input id="authClientId" value="my-client" />
+        <input id="authClientSecret" value="my-secret" />
+    `;
+}
+
+function mockFetchResponse(data) {
+    global.fetch = jest.fn(() => Promise.resolve({
+        json: () => Promise.resolve(data),
+    }));
+}
+
+function mockFetchNetworkError() {
+    global.fetch = jest.fn(() => Promise.reject(new Error('Failed to fetch')));
+}
+
+function getAuthMessage() {
+    const el = document.getElementById('authMessage');
+    return { text: el.textContent, isError: el.className.includes('auth-error') };
+}
+
+describe('loginBearer error handling', () => {
+    beforeEach(() => {
+        setupAuthDom();
+        jest.useFakeTimers();
+    });
+    afterEach(() => {
+        jest.useRealTimers();
+        delete global.fetch;
+    });
+
+    test('401 with non-JSON body shows "Login failed: Unauthorized"', async () => {
+        mockFetchResponse({ status: 401, headers: {}, body: 'Unauthorized' });
+        await loginBearer();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Login failed: Unauthorized');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('400 with JSON error body shows the error message', async () => {
+        mockFetchResponse({ status: 400, headers: {}, body: JSON.stringify({ message: 'Invalid request format' }) });
+        await loginBearer();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Login failed: Invalid request format');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('404 with plain text body shows the body content', async () => {
+        mockFetchResponse({ status: 404, headers: {}, body: 'Not Found' });
+        await loginBearer();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Login failed: Not Found');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('500 with JSON error body shows the error field', async () => {
+        mockFetchResponse({ status: 500, headers: {}, body: JSON.stringify({ error: 'Internal Server Error' }) });
+        await loginBearer();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Login failed: Internal Server Error');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('502 with empty body shows "Unknown error"', async () => {
+        mockFetchResponse({ status: 502, headers: {}, body: '' });
+        await loginBearer();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Login failed: Unknown error');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('504 with HTML body shows raw body as fallback', async () => {
+        mockFetchResponse({ status: 504, headers: {}, body: '<html>Gateway Timeout</html>' });
+        await loginBearer();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Login failed: <html>Gateway Timeout</html>');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('network failure shows generic connection error', async () => {
+        mockFetchNetworkError();
+        await loginBearer();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Unable to connect to the server. Please check your network connection and try again.');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('no error message mentions proxy', async () => {
+        mockFetchResponse({ status: 401, headers: {}, body: 'Unauthorized' });
+        await loginBearer();
+        expect(getAuthMessage().text.toLowerCase()).not.toContain('proxy');
+    });
+});
+
+describe('loginOAuth2 error handling', () => {
+    beforeEach(() => {
+        setupAuthDom();
+        jest.useFakeTimers();
+    });
+    afterEach(() => {
+        jest.useRealTimers();
+        delete global.fetch;
+    });
+
+    test('401 with non-JSON body shows "Token request failed: Unauthorized"', async () => {
+        mockFetchResponse({ status: 401, headers: {}, body: 'Unauthorized' });
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Token request failed: Unauthorized');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('400 with oauth error body shows error_description', async () => {
+        mockFetchResponse({ status: 400, headers: {}, body: JSON.stringify({ error: 'invalid_client', error_description: 'Client authentication failed' }) });
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Token request failed: Client authentication failed');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('404 with plain text body shows the body content', async () => {
+        mockFetchResponse({ status: 404, headers: {}, body: 'Not Found' });
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Token request failed: Not Found');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('500 with JSON error body shows the error field', async () => {
+        mockFetchResponse({ status: 500, headers: {}, body: JSON.stringify({ error: 'Internal Server Error' }) });
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Token request failed: Internal Server Error');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('502 with empty body shows "Unknown error"', async () => {
+        mockFetchResponse({ status: 502, headers: {}, body: '' });
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Token request failed: Unknown error');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('504 with HTML body shows raw body as fallback', async () => {
+        mockFetchResponse({ status: 504, headers: {}, body: '<html>Gateway Timeout</html>' });
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Token request failed: <html>Gateway Timeout</html>');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('network failure shows generic connection error', async () => {
+        mockFetchNetworkError();
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Unable to connect to the server. Please check your network connection and try again.');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('server-side error field shows "Server error:" prefix', async () => {
+        mockFetchResponse({ error: 'connection reset' });
+        await loginOAuth2();
+        const msg = getAuthMessage();
+        expect(msg.text).toBe('Server error: connection reset');
+        expect(msg.isError).toBe(true);
+    });
+
+    test('no error message mentions proxy', async () => {
+        mockFetchResponse({ status: 401, headers: {}, body: 'Unauthorized' });
+        await loginOAuth2();
+        expect(getAuthMessage().text.toLowerCase()).not.toContain('proxy');
+    });
+});
+
