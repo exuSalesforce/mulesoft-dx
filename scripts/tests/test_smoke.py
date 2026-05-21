@@ -9,8 +9,8 @@ from bs4 import BeautifulSoup
 from portal_generator import PortalGenerator
 from tests.conftest import (
     MINIMAL_OAS_YAML, MINIMAL_EXCHANGE_JSON, MINIMAL_SKILL_MD,
-    PRIVATE_EXCHANGE_JSON, PROSE_ONLY_SKILL_MD, NESTED_SKILL_MD,
-    NON_API_STEPS_SKILL_MD, setup_schema_docs,
+    PRIVATE_EXCHANGE_JSON, PRIVATE_API_SKILL_MD, PROSE_ONLY_SKILL_MD,
+    NESTED_SKILL_MD, NON_API_STEPS_SKILL_MD, setup_schema_docs,
     MINIMAL_MCP_SERVER_JSON, MINIMAL_MCP_YAML, MINIMAL_MCP_EXCHANGE_JSON,
     MINIMAL_TERRAFORM_MD,
 )
@@ -562,6 +562,56 @@ class TestPrivateApiExclusion:
 
     def test_private_api_yaml_copied(self, portal_with_private_api):
         assert (portal_with_private_api / 'apis' / 'private-api' / 'api.yaml').exists()
+
+
+class TestPrivateApiNotInRelatedApis:
+    """Verify private APIs do not appear in skill Related APIs sidebar."""
+
+    @pytest.fixture
+    def portal_with_skill_referencing_private(self, tmp_path):
+        repo = tmp_path / 'repo'
+        repo.mkdir()
+        apis_dir = repo / 'apis'
+        apis_dir.mkdir()
+
+        # Public API
+        public_dir = apis_dir / 'public-api'
+        public_dir.mkdir()
+        (public_dir / 'api.yaml').write_text(MINIMAL_OAS_YAML)
+        (public_dir / 'exchange.json').write_text(MINIMAL_EXCHANGE_JSON)
+
+        # Private API
+        private_dir = apis_dir / 'private-api'
+        private_dir.mkdir()
+        (private_dir / 'api.yaml').write_text(MINIMAL_OAS_YAML)
+        (private_dir / 'exchange.json').write_text(PRIVATE_EXCHANGE_JSON)
+
+        # Skill referencing both
+        skills_dir = repo / 'skills' / 'mixed-api-skill'
+        skills_dir.mkdir(parents=True)
+        (skills_dir / 'SKILL.md').write_text(PRIVATE_API_SKILL_MD)
+
+        setup_schema_docs(repo)
+
+        output = tmp_path / 'output'
+        generator = PortalGenerator(output)
+        generator.generate(repo)
+        return output
+
+    def test_private_api_not_in_skill_sidebar(self, portal_with_skill_referencing_private):
+        html = (portal_with_skill_referencing_private / 'skills' / 'mixed-api-skill.html').read_text(encoding='utf-8')
+        soup = BeautifulSoup(html, 'html.parser')
+        apis_panel = soup.find(id='apis-panel')
+        assert apis_panel is not None
+        links = apis_panel.find_all('a')
+        link_hrefs = [a.get('href', '') for a in links]
+        assert any('public-api' in h for h in link_hrefs)
+        assert not any('private-api' in h for h in link_hrefs)
+
+    def test_private_api_not_in_skill_markdown_apis_section(self, portal_with_skill_referencing_private):
+        md = (portal_with_skill_referencing_private / 'skills' / 'mixed-api-skill.md').read_text(encoding='utf-8')
+        assert '[public-api]' in md
+        assert '[private-api]' not in md
 
 
 class TestRefSubdirectoriesCopied:

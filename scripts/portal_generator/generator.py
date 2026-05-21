@@ -815,8 +815,9 @@ class PortalGenerator:
 
         # Skill pages
         skill_tmpl = self.env.get_template('markdown/skill_page.md.html')
+        private_slugs = {a['slug'] for a in self.apis if a.get('private')}
         for skill in self.all_skills:
-            md = skill_tmpl.render(base_url=self.base_url, skill=skill)
+            md = skill_tmpl.render(base_url=self.base_url, skill=skill, private_api_slugs=private_slugs)
             (self.output_dir / 'skills' / f"{skill['slug']}.md").write_text(md, encoding='utf-8')
             count += 1
 
