@@ -1853,4 +1853,51 @@ describe('loginOAuth2 error handling', () => {
     });
 });
 
+// ===========================================================================
+// toggleSkillMode — scroll to first step on activation
+// ===========================================================================
+
+describe('toggleSkillMode scroll behavior', () => {
+    const slug = 'test-skill';
+
+    function setupSkillDom() {
+        document.body.innerHTML = `
+            <div id="toggle-${slug}" aria-checked="false"></div>
+            <div id="variables-sidebar-${slug}" style="display:none"></div>
+            <div class="step-documentation-view"></div>
+            <div class="step-interactive-view" style="display:none"></div>
+            <div id="step-${slug}-0"></div>
+            <div id="step-${slug}-1"></div>
+        `;
+        document.getElementById('step-' + slug + '-0').scrollIntoView = jest.fn();
+        document.getElementById('step-' + slug + '-1').scrollIntoView = jest.fn();
+    }
+
+    beforeEach(() => {
+        setupSkillDom();
+    });
+
+    test('scrolls to first step when activating interactive mode', () => {
+        toggleSkillMode(slug);
+        const firstStep = document.getElementById('step-' + slug + '-0');
+        expect(firstStep.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    });
+
+    test('does not scroll to second step', () => {
+        toggleSkillMode(slug);
+        const secondStep = document.getElementById('step-' + slug + '-1');
+        expect(secondStep.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    test('does not scroll when deactivating interactive mode', () => {
+        // Activate first
+        toggleSkillMode(slug);
+        const firstStep = document.getElementById('step-' + slug + '-0');
+        firstStep.scrollIntoView.mockClear();
+        // Deactivate
+        toggleSkillMode(slug);
+        expect(firstStep.scrollIntoView).not.toHaveBeenCalled();
+    });
+});
+
 

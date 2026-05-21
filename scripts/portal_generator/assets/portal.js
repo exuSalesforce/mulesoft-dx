@@ -5249,6 +5249,12 @@ function toggleSkillMode(slug) {
 
         // Initialize playground steps if not already done
         initializePlaygroundSteps();
+
+        // Scroll to the first step
+        var firstStep = document.getElementById('step-' + slug + '-0');
+        if (firstStep) {
+            firstStep.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 }
 
