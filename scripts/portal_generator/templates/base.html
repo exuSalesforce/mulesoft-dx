@@ -50,7 +50,14 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-yaml.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-xml.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/theme-textmate.min.js" defer></script>
-    <script>window.aceEditors = {};</script>
+    <script>
+        window.aceEditors = {};
+        window.addEventListener('DOMContentLoaded', function() {
+            if (typeof ace !== 'undefined' && ace.config) {
+                ace.config.set('basePath', 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/');
+            }
+        });
+    </script>
     <link rel="stylesheet" href="https://www.mulesoft.com/oneTrust/assets/onetrust.min.css">
     <link rel="stylesheet" href="https://www.mulesoft.com/oneTrust/assets/onetrust-mulesoft-custom.css">
     <script>

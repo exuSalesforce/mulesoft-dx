@@ -4771,6 +4771,12 @@ function createReadOnlyAceEditor(container, content, language) {
     // Set read-only background
     updateAceEditorBackground(editor);
 
+    // Register editor so theme toggles can update it
+    if (!window.aceEditors) window.aceEditors = {};
+    if (container.id) {
+        window.aceEditors[container.id] = editor;
+    }
+
     return editor;
 }
 
