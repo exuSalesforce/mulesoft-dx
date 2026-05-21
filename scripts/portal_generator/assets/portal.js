@@ -533,7 +533,7 @@ async function executeXOriginSource(sourceIdx, buttonEl) {
         });
 
         var data = await resp.json();
-        handleProxyResponse(data);
+        await handleProxyResponse(data);
 
         // Restore button
         if (buttonEl) {
@@ -2879,9 +2879,14 @@ async function checkTtlExpiration() {
     }
 }
 
-function handleProxyResponse(data) {
+async function handleProxyResponse(data) {
     if (data.status === 401) {
-        markTokenExpired();
+        var result = await introspectToken();
+        if (result && result.active === true && result.exp) {
+            setTokenExpiration(parseInt(result.exp, 10));
+        } else {
+            markTokenExpired();
+        }
     }
 }
 
@@ -3113,7 +3118,7 @@ async function loadXOriginValues(opId, paramName) {
         });
 
         var data = await resp.json();
-        handleProxyResponse(data);
+        await handleProxyResponse(data);
 
         if (btn) {
             btn.disabled = false;
@@ -3314,7 +3319,7 @@ async function loadXOriginValuesForEnv(paramName) {
         });
 
         var data = await resp.json();
-        handleProxyResponse(data);
+        await handleProxyResponse(data);
 
         if (btn) {
             btn.disabled = false;
@@ -4587,7 +4592,7 @@ async function sendRequest(opId, buttonEl) {
             })
         });
         var data = await resp.json();
-        handleProxyResponse(data);
+        await handleProxyResponse(data);
 
         // Restore button
         if (buttonEl) {
@@ -6431,7 +6436,7 @@ async function executePlaygroundStep(sid, buttonEl) {
         });
 
         var result = await resp.json();
-        handleProxyResponse(result);
+        await handleProxyResponse(result);
 
         // Restore button
         if (buttonEl) {
@@ -7337,7 +7342,7 @@ async function runWorkflowStep(skillSlug, stepIndex) {
             })
         });
         var data = await resp.json();
-        handleProxyResponse(data);
+        await handleProxyResponse(data);
 
         if (spinner) spinner.style.display = 'none';
         if (rightPanel) rightPanel.setAttribute('open', '');

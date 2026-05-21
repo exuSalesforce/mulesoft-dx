@@ -1174,22 +1174,55 @@ describe('handleProxyResponse', () => {
             }
         });
     });
+    afterEach(() => {
+        delete global.fetch;
+    });
 
-    test('marks token expired on 401', () => {
-        handleProxyResponse({ status: 401 });
+    test('marks token expired on 401 when introspection confirms inactive', async () => {
+        global.fetch = jest.fn(() => Promise.resolve({
+            json: () => Promise.resolve({ status: 200, body: JSON.stringify({ active: false }) }),
+        }));
+        await handleProxyResponse({ status: 401 });
         expect(sessionStorage.getItem('anypoint_token_expires_at')).toBe('0');
     });
 
-    test('does nothing on non-401 responses', () => {
-        var original = sessionStorage.getItem('anypoint_token_expires_at');
-        handleProxyResponse({ status: 200 });
-        expect(sessionStorage.getItem('anypoint_token_expires_at')).toBe(original);
+    test('does not mark expired on 401 when introspection confirms active', async () => {
+        const futureExp = Date.now() + 300000;
+        global.fetch = jest.fn(() => Promise.resolve({
+            json: () => Promise.resolve({ status: 200, body: JSON.stringify({ active: true, exp: futureExp }) }),
+        }));
+        await handleProxyResponse({ status: 401 });
+        expect(sessionStorage.getItem('anypoint_token_expires_at')).toBe(String(futureExp));
     });
 
-    test('does nothing on server error responses', () => {
+    test('does nothing on non-401 responses', async () => {
+        global.fetch = jest.fn();
         var original = sessionStorage.getItem('anypoint_token_expires_at');
-        handleProxyResponse({ status: 500 });
+        await handleProxyResponse({ status: 200 });
         expect(sessionStorage.getItem('anypoint_token_expires_at')).toBe(original);
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    test('does nothing on server error responses', async () => {
+        global.fetch = jest.fn();
+        var original = sessionStorage.getItem('anypoint_token_expires_at');
+        await handleProxyResponse({ status: 500 });
+        expect(sessionStorage.getItem('anypoint_token_expires_at')).toBe(original);
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    test('marks expired on 401 when introspection network fails', async () => {
+        global.fetch = jest.fn(() => Promise.reject(new Error('Network error')));
+        await handleProxyResponse({ status: 401 });
+        expect(sessionStorage.getItem('anypoint_token_expires_at')).toBe('0');
+    });
+
+    test('marks expired on 401 when introspection returns error', async () => {
+        global.fetch = jest.fn(() => Promise.resolve({
+            json: () => Promise.resolve({ error: 'invalid_token' }),
+        }));
+        await handleProxyResponse({ status: 401 });
+        expect(sessionStorage.getItem('anypoint_token_expires_at')).toBe('0');
     });
 });
 
@@ -1819,4 +1852,5 @@ describe('loginOAuth2 error handling', () => {
         expect(getAuthMessage().text.toLowerCase()).not.toContain('proxy');
     });
 });
+
 
