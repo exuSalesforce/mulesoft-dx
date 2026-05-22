@@ -72,9 +72,15 @@ def is_valid_version_dirname(name: str) -> bool:
     return _SEMVER_RE.match(name) is not None
 
 
-def _prerelease_key(pre: str):
+def _prerelease_key(pre: str) -> Tuple[int, list]:
+    """Build a comparison key for the prerelease segment.
+
+    Implements SemVer 2.0 §11: a version without a prerelease has higher
+    precedence than one with a prerelease. Within prereleases, numeric
+    identifiers compare numerically and rank lower than alphanumerics.
+    """
     if not pre:
-        return (1,)
+        return (1, [])
     parts = []
     for ident in pre.split("."):
         if ident.isdigit():

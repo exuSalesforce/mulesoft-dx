@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from markupsafe import Markup
 
-from portal_generator.utils import get_category, CATEGORY_MAPPING
+from portal_generator.utils import get_category, CATEGORY_MAPPING, parse_semver, sort_versions_desc, is_valid_version_dirname
 from portal_generator.builders.tree_builder import build_operation_tree, count_tree_operations
 from portal_generator.template_env import _nl2br, _render_markdown, _tojson_raw, _skill_title, _titleize_operation, _slugify, _resolve_skill_inputs
 from portal_generator.generator import _build_api_meta, _get_example_body, PortalGenerator
@@ -1630,10 +1630,6 @@ class TestDiscoverTerraform:
         (hidden_dir / 'anypoint_api_instance.md').write_text(MINIMAL_TERRAFORM_MD)
 
         assert discover_terraform(tmp_path) == []
-
-
-import pytest
-from portal_generator.utils import parse_semver, sort_versions_desc, is_valid_version_dirname
 
 
 class TestSemver:
