@@ -230,6 +230,7 @@ class PortalGenerator:
 
         # Generate files
         print(f"\n📝 Generating portal files...")
+        self._generate_404()
         self._generate_homepage()
         self._generate_detail_pages()
         self._generate_mcp_detail_pages()
@@ -251,6 +252,20 @@ class PortalGenerator:
         print(f"🌐 Open: {self.output_dir}/index.html")
         print(f"📋 Registry: {self.output_dir}/registry.json")
         print(f"🤖 Agent guide: {self.output_dir}/AGENTS.md")
+
+    def _generate_404(self):
+        """Generate 404.html error page."""
+        print("  ✓ Generating 404 page...")
+        template = self.env.get_template('404.html')
+        html = template.render(
+            css_path='assets/styles.css',
+            build_label=self.build_label,
+            base_url=self.base_url,
+            chrome=self.chrome,
+        )
+        output_path = self.output_dir / '404.html'
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
 
     def _generate_homepage(self):
         """Generate index.html"""
