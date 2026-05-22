@@ -1073,3 +1073,29 @@ def test_homepage_terraform_card_links_to_index(generated_portal):
     href = card["href"]
     assert href.endswith("anypoint-provider/index.html") or href.endswith("anypoint-provider/")
     assert "0.0.6" in card.get_text()
+
+
+def test_multi_version_anchor_map_marks_unique_resources(tmp_path):
+    """The version_anchors emitted in the page lists each version's docs.
+
+    Resources unique to newer versions are absent from older versions' lists.
+    """
+    import shutil
+
+    fixture = Path(__file__).parent / "fixtures" / "terraform_multi_version"
+    repo = tmp_path / "repo"
+    shutil.copytree(fixture, repo / "terraform")
+    setup_schema_docs(repo)
+
+    out = tmp_path / "out"
+    PortalGenerator(out).generate(repo)
+
+    page = (out / "terraform" / "sample-provider" / "1.0.0.html").read_text()
+    soup = BeautifulSoup(page, "html.parser")
+    anchors_json = soup.select_one('script#tf-version-anchors').string.strip()
+    anchors = json.loads(anchors_json)
+    assert "1.0.0" in anchors and "0.9.0" in anchors
+    assert "sample_new_resource" in anchors["1.0.0"]
+    assert "sample_new_resource" not in anchors["0.9.0"]
+    assert "sample_legacy_resource" in anchors["1.0.0"]
+    assert "sample_legacy_resource" in anchors["0.9.0"]
