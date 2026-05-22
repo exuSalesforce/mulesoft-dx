@@ -8361,7 +8361,7 @@ function clearAllVariables(slug) {
     if (savedTheme === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
     } else if (savedTheme === 'light') {
-        document.documentElement.removeAttribute('data-theme');
+        document.documentElement.setAttribute('data-theme', 'light');
     }
     // Create and inject dark mode toggle button
     var toggleButton = document.createElement('button');
@@ -8391,11 +8391,7 @@ function clearAllVariables(slug) {
         var currentTheme = document.documentElement.getAttribute('data-theme');
         var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
-        if (newTheme === 'dark') {
-            document.documentElement.setAttribute('data-theme', 'dark');
-        } else {
-            document.documentElement.removeAttribute('data-theme');
-        }
+        document.documentElement.setAttribute('data-theme', newTheme);
 
         localStorage.setItem('theme', newTheme);
         updateToggleButton();
@@ -8419,11 +8415,7 @@ function clearAllVariables(slug) {
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
             // Only auto-switch if user hasn't manually set a preference
             if (!localStorage.getItem('theme')) {
-                if (e.matches) {
-                    document.documentElement.setAttribute('data-theme', 'dark');
-                } else {
-                    document.documentElement.removeAttribute('data-theme');
-                }
+                document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
                 updateToggleButton();
                 updateAllAceEditors();
             }

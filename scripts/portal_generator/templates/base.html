@@ -21,9 +21,7 @@
             var savedTheme = localStorage.getItem('theme');
             var systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             var initialTheme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
-            if (initialTheme === 'dark') {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
+            document.documentElement.setAttribute('data-theme', initialTheme);
         })();
     </script>
     {% block head_scripts %}{% endblock %}
