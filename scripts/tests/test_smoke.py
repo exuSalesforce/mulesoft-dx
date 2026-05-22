@@ -1062,3 +1062,14 @@ def test_terraform_version_selector_rendered(generated_portal):
     assert options[0].get("selected") is not None
     # Anchor metadata script tag is present
     assert soup.select_one('script[type="application/json"]#tf-version-anchors') is not None
+
+
+def test_homepage_terraform_card_links_to_index(generated_portal):
+    from bs4 import BeautifulSoup
+    home = (generated_portal / "index.html").read_text()
+    soup = BeautifulSoup(home, "html.parser")
+    card = soup.select_one('a[href*="terraform/anypoint-provider"]')
+    assert card is not None
+    href = card["href"]
+    assert href.endswith("anypoint-provider/index.html") or href.endswith("anypoint-provider/")
+    assert "0.0.6" in card.get_text()

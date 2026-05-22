@@ -1,9 +1,9 @@
-<a href="terraform/{{ terraform.slug }}.html" class="catalog-card-link" data-name="{{ terraform.name|lower }}" data-type="terraform">
+<a href="terraform/{{ terraform.slug }}/index.html" class="catalog-card-link" data-name="{{ terraform.name|lower }}" data-type="terraform">
     <article class="catalog-card" data-popover-title="{{ terraform.name }}" data-popover-description="Terraform provider with {{ terraform.doc_count }} resources/data sources" data-popover-type="terraform">
         <div class="catalog-card-header">
             <div class="catalog-card-title-wrapper">
                 <img src="{{ icons_path }}/terraform-filter-icon.svg" width="28" height="28" class="card-icon card-icon-terraform" alt="">
-                <h3 class="catalog-card-title">{{ terraform.name }}</h3>
+                <h3 class="catalog-card-title">{{ terraform.name }}<span class="tf-card-version">{{ terraform.latest_version }}</span></h3>
             </div>
         </div>
         <p class="catalog-card-description">Terraform provider with {{ terraform.doc_count }} resources and data sources</p>
