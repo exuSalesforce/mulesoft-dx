@@ -9916,13 +9916,22 @@ code[class*="language-"][class*="language-"] {
     color: var(--color-text-primary);
 }
 
-.mcp-config-code {
+.mcp-config-code,
+pre[class*="language-"].mcp-config-code,
+.mcp-ide-modal pre[class*="language-"] {
     margin: 0;
     padding: var(--space-md);
     font-family: var(--font-mono);
     font-size: var(--font-size-3);
     background: var(--color-bg-primary);
     overflow-x: auto;
+    text-shadow: none;
+}
+
+pre.mcp-install-command,
+.mcp-ide-modal pre.mcp-install-command[class*="language-"] {
+    background: var(--color-bg-primary);
+    text-shadow: none;
 }
 
 .mcp-config-code code {
