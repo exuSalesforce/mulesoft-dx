@@ -1672,3 +1672,59 @@ class TestSemver:
         assert is_valid_version_dirname("resources") is False
         assert is_valid_version_dirname("1.2") is False
         assert is_valid_version_dirname("data-sources") is False
+
+
+class TestDiscoverTerraform:
+    def test_discovers_versions_sorted_desc(self, make_tf_repo):
+        from portal_generator.discovery import discover_terraform
+        repo = make_tf_repo({
+            "anypoint-provider": {
+                "1.10.0": {"provider.json": {"local_name": "anypoint", "version": "1.10.0"}, "resources": ["a.md"]},
+                "1.9.0":  {"provider.json": {"local_name": "anypoint", "version": "1.9.0"},  "resources": ["a.md"]},
+                "0.0.6":  {"provider.json": {"local_name": "anypoint", "version": "0.0.6"},  "resources": ["a.md"]},
+            },
+        })
+        providers = discover_terraform(repo)
+        assert len(providers) == 1
+        prov = providers[0]
+        assert prov["slug"] == "anypoint-provider"
+        assert [v["version"] for v in prov["versions"]] == ["1.10.0", "1.9.0", "0.0.6"]
+        assert prov["latest_version"] == "1.10.0"
+        assert prov["versions"][0]["is_latest"] is True
+        assert prov["versions"][1]["is_latest"] is False
+
+    def test_top_level_keys_alias_latest(self, make_tf_repo):
+        from portal_generator.discovery import discover_terraform
+        repo = make_tf_repo({
+            "anypoint-provider": {
+                "1.0.0": {"provider.json": {"local_name": "anypoint", "version": "1.0.0"}, "resources": ["latest.md"]},
+                "0.9.0": {"provider.json": {"local_name": "anypoint", "version": "0.9.0"}, "resources": ["old.md"]},
+            },
+        })
+        prov = discover_terraform(repo)[0]
+        latest_docs_names = [d["page_title"] for d in prov["docs"]]
+        assert "latest.md" in latest_docs_names
+        assert "old.md" not in latest_docs_names
+        assert prov["nav_tree"] is prov["versions"][0]["nav_tree"]
+
+    def test_rejects_invalid_version_dirname(self, make_tf_repo, capsys):
+        from portal_generator.discovery import discover_terraform
+        repo = make_tf_repo({
+            "anypoint-provider": {
+                "1.0.0":      {"provider.json": {"local_name": "anypoint", "version": "1.0.0"}, "resources": ["a.md"]},
+                "not-a-ver":  {"provider.json": {"local_name": "anypoint", "version": "x"},     "resources": ["a.md"]},
+            },
+        })
+        prov = discover_terraform(repo)[0]
+        assert [v["version"] for v in prov["versions"]] == ["1.0.0"]
+        captured = capsys.readouterr().out
+        assert "not-a-ver" in captured
+
+    def test_provider_with_no_valid_versions_is_dropped(self, make_tf_repo):
+        from portal_generator.discovery import discover_terraform
+        repo = make_tf_repo({
+            "broken-provider": {
+                "garbage": {"provider.json": {}, "resources": ["a.md"]},
+            },
+        })
+        assert discover_terraform(repo) == []
