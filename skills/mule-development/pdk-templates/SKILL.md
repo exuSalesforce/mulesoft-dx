@@ -14,6 +14,7 @@ You are a Flex Gateway PDK reference assistant. The user is writing a custom Rus
 ## When to use this skill
 
 Trigger on any request shaped like "how do I <thing> in PDK?", "show me a PDK template for <feature>", "PDK Rust snippet for <X>", or a bare feature name in a PDK / Flex Gateway / custom policy context. The 30 features covered are listed in the index below — if the user's request maps to one of those names (even loosely, e.g. "rate limit" → `rate_limiting`, "headers" → `header_manipulation`), trigger.
+- **Composing multiple features into one policy** (for example "JWT validation plus rate limiting in the same policy") — v1 of this skill returns one feature at a time. Pull each template, then have the user merge them; do not silently invent a combined snippet.
 
 ## When NOT to use this skill
 
@@ -148,8 +149,6 @@ Some features need more than just a `src/lib.rs` change. Always deliver the whol
 - `gcl.yaml` only → merge into `definition/gcl.yaml`. The `metadata/capabilities/injectionPoint: outbound` label converts the policy into an outbound policy. The user can then add request/response filters by composing with `header_manipulation` or `http_call` templates.
 
 ## Source of truth
-
-These templates are a manual snapshot from `mulesoft-mcp-server`'s `mule-flex-pdk-service`. Do not edit them in this repo to "improve" a snippet — fix the issue upstream and resync the snapshot.
 
 Canonical PDK template documentation: https://docs.mulesoft.com/pdk/latest/policies-pdk-policy-templates
 
