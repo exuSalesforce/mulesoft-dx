@@ -623,15 +623,19 @@ class PortalGenerator:
 
     @staticmethod
     def _render_redirect_stub(target_relative_url: str, label: str) -> str:
-        """Tiny static-site-friendly meta-refresh page.
+        """Tiny static-site-friendly redirect page.
 
-        Both inputs are escaped: ``label`` via :func:`html.escape` for HTML
-        text contexts, ``target_relative_url`` via :func:`urllib.parse.quote`
-        with ``safe='/.-#?='`` for use inside attribute values.
+        Forwards via inline JS so ``location.hash`` (e.g. ``#doc-foo``) is
+        preserved, with a ``<meta http-equiv="refresh">`` fallback for clients
+        that block scripts. Both inputs are escaped: ``label`` via
+        :func:`html.escape`, ``target_relative_url`` via
+        :func:`urllib.parse.quote` for attribute-value safety.
         """
         url = _urlquote(target_relative_url, safe="/.-#?=&")
         label_safe = _html.escape(label, quote=True)
         url_attr = _html.escape(url, quote=True)
+        # JSON-encode the URL for safe injection into the inline script.
+        url_js = json.dumps(url)
         return (
             f"<!doctype html>\n"
             f"<html lang=\"en\"><head>"
@@ -639,6 +643,10 @@ class PortalGenerator:
             f"<meta http-equiv=\"refresh\" content=\"0; url={url_attr}\">"
             f"<title>Redirecting to {label_safe}</title>"
             f"<link rel=\"canonical\" href=\"{url_attr}\">"
+            f"<script>"
+            f"(function(){{var t={url_js};"
+            f"location.replace(t+(location.hash||''));}})();"
+            f"</script>"
             f"</head><body>"
             f"<noscript><a href=\"{url_attr}\">Continue to {label_safe}</a></noscript>"
             f"</body></html>\n"

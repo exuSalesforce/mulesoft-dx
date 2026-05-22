@@ -1044,11 +1044,19 @@ def test_terraform_per_version_pages_generated(generated_portal):
     assert index.is_file()
     assert 'http-equiv="refresh"' in index.read_text()
     assert "0.0.6.html" in index.read_text()
+    # Latest-redirect index also forwards location.hash via inline JS
+    index_text = index.read_text()
+    assert "location.replace" in index_text
+    assert "location.hash" in index_text
     # Legacy URL stub still resolves
     legacy = out / "terraform" / "anypoint-provider.html"
     assert legacy.is_file()
-    assert 'http-equiv="refresh"' in legacy.read_text()
-    assert "anypoint-provider/index.html" in legacy.read_text()
+    legacy_text = legacy.read_text()
+    assert 'http-equiv="refresh"' in legacy_text
+    assert "anypoint-provider/index.html" in legacy_text
+    # Legacy stub also preserves location.hash via inline JS
+    assert "location.replace" in legacy_text
+    assert "location.hash" in legacy_text
 
 
 def test_terraform_version_selector_rendered(generated_portal):
