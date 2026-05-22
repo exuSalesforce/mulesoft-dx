@@ -53,6 +53,13 @@ def generated_portal(tmp_path):
     (mcp_dir / 'mcp.yaml').write_text(MINIMAL_MCP_YAML)
     (mcp_dir / 'exchange.json').write_text(MINIMAL_MCP_EXCHANGE_JSON)
 
+    # Versioned terraform provider
+    tf_version_dir = repo / 'terraform' / 'anypoint-provider' / '0.0.6'
+    (tf_version_dir / 'resources').mkdir(parents=True)
+    (tf_version_dir / 'data-sources').mkdir(parents=True)
+    (tf_version_dir / 'resources' / 'anypoint_api_instance.md').write_text(MINIMAL_TERRAFORM_MD)
+    (tf_version_dir / 'data-sources' / 'anypoint_api_instance.md').write_text(MINIMAL_TERRAFORM_MD)
+
     setup_schema_docs(repo)
 
     output = tmp_path / 'portal_output'
@@ -838,9 +845,9 @@ class TestTerraformPageGeneration:
         repo = tmp_path / 'repo'
         repo.mkdir()
 
-        provider_dir = repo / 'terraform' / 'anypoint-provider'
-        resources_dir = provider_dir / 'resources'
-        data_sources_dir = provider_dir / 'data-sources'
+        version_dir = repo / 'terraform' / 'anypoint-provider' / '0.0.6'
+        resources_dir = version_dir / 'resources'
+        data_sources_dir = version_dir / 'data-sources'
         resources_dir.mkdir(parents=True)
         data_sources_dir.mkdir(parents=True)
         (resources_dir / 'anypoint_api_instance.md').write_text(MINIMAL_TERRAFORM_MD)
@@ -855,12 +862,12 @@ class TestTerraformPageGeneration:
 
     @pytest.fixture
     def terraform_soup(self, portal_with_terraform):
-        html = (portal_with_terraform / 'terraform' / 'anypoint-provider.html').read_text(encoding='utf-8')
+        html = (portal_with_terraform / 'terraform' / 'anypoint-provider' / '0.0.6.html').read_text(encoding='utf-8')
         return BeautifulSoup(html, 'html.parser')
 
     def test_generates_one_html_per_provider(self, portal_with_terraform):
-        """A single .html is emitted under terraform/ for each provider."""
-        assert (portal_with_terraform / 'terraform' / 'anypoint-provider.html').exists()
+        """A per-version .html is emitted under terraform/<provider>/ for each provider."""
+        assert (portal_with_terraform / 'terraform' / 'anypoint-provider' / '0.0.6.html').exists()
 
     def test_overview_div_has_id_overview(self, terraform_soup):
         """The overview subsection uses id='overview'."""
@@ -999,8 +1006,8 @@ class TestMaliciousTerraformSmokeRawHtml:
         repo = tmp_path / 'repo'
         repo.mkdir()
         (repo / 'apis').mkdir()
-        provider_dir = repo / 'terraform' / 'anypoint-provider'
-        resources_dir = provider_dir / 'resources'
+        version_dir = repo / 'terraform' / 'anypoint-provider' / '0.0.6'
+        resources_dir = version_dir / 'resources'
         resources_dir.mkdir(parents=True)
         (resources_dir / 'dangerous.md').write_bytes(
             (SECURITY_FIXTURES / 'malicious_terraform' / 'dangerous.md').read_bytes()
@@ -1013,7 +1020,7 @@ class TestMaliciousTerraformSmokeRawHtml:
 
     @pytest.fixture
     def terraform_html(self, portal_with_malicious_terraform):
-        return (portal_with_malicious_terraform / 'terraform' / 'anypoint-provider.html').read_text(encoding='utf-8')
+        return (portal_with_malicious_terraform / 'terraform' / 'anypoint-provider' / '0.0.6.html').read_text(encoding='utf-8')
 
     def test_no_iframe_tags(self, terraform_html):
         soup = BeautifulSoup(terraform_html, 'html.parser')
@@ -1024,3 +1031,34 @@ class TestMaliciousTerraformSmokeRawHtml:
         for s in soup.find_all('script'):
             body = s.string or ''
             assert 'evil.example' not in body
+
+
+def test_terraform_per_version_pages_generated(generated_portal):
+    """Each (provider, version) gets its own HTML; index.html redirects to latest;
+    legacy <slug>.html stub redirects to <slug>/index.html."""
+    out = generated_portal
+    # Per-version page exists
+    assert (out / "terraform" / "anypoint-provider" / "0.0.6.html").is_file()
+    # Latest-redirect index
+    index = out / "terraform" / "anypoint-provider" / "index.html"
+    assert index.is_file()
+    assert 'http-equiv="refresh"' in index.read_text()
+    assert "0.0.6.html" in index.read_text()
+    # Legacy URL stub still resolves
+    legacy = out / "terraform" / "anypoint-provider.html"
+    assert legacy.is_file()
+    assert 'http-equiv="refresh"' in legacy.read_text()
+    assert "anypoint-provider/index.html" in legacy.read_text()
+
+
+def test_terraform_version_selector_rendered(generated_portal):
+    """Version selector lists all versions, latest first, marked selected."""
+    page = (generated_portal / "terraform" / "anypoint-provider" / "0.0.6.html").read_text()
+    soup = BeautifulSoup(page, "html.parser")
+    selector = soup.select_one(".tf-version-selector select")
+    assert selector is not None
+    options = selector.find_all("option")
+    assert [o.get("value") for o in options] == ["0.0.6"]
+    assert options[0].get("selected") is not None
+    # Anchor metadata script tag is present
+    assert soup.select_one('script[type="application/json"]#tf-version-anchors') is not None

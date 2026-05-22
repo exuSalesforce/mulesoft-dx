@@ -563,31 +563,76 @@ class PortalGenerator:
         return preamble + "\n" + content
 
     def _generate_terraform_pages(self):
-        """Generate Terraform provider documentation pages (one page per provider)."""
+        """Generate one HTML page per (provider, version), plus index/legacy stubs."""
         if not self.terraform_providers:
             return
-        total_docs = sum(p['doc_count'] for p in self.terraform_providers)
-        print(f"  ✓ Generating {len(self.terraform_providers)} Terraform provider page(s) ({total_docs} docs)...")
+        total_docs = sum(
+            sum(v['doc_count'] for v in p['versions']) for p in self.terraform_providers
+        )
+        version_count = sum(len(p['versions']) for p in self.terraform_providers)
+        print(
+            f"  ✓ Generating {version_count} Terraform page(s) "
+            f"across {len(self.terraform_providers)} provider(s) ({total_docs} docs)..."
+        )
 
         template = self.env.get_template('terraform_page.html')
 
         for provider in self.terraform_providers:
-            nav_tree = provider['nav_tree']
-            nav_tree_by_type = provider['nav_tree_by_type']
+            provider_dir = self.output_dir / 'terraform' / provider['slug']
+            provider_dir.mkdir(parents=True, exist_ok=True)
+            version_anchors = self._build_version_anchors(provider)
 
-            html = template.render(
-                css_path='../assets/styles.css',
-                icons_path='../assets/icons',
-                provider=provider,
-                nav_tree=nav_tree,
-                nav_tree_by_type=nav_tree_by_type,
-                home_link='../index.html',
-                build_label=self.build_label,
-                base_url=self.base_url,
+            for version in provider['versions']:
+                html = template.render(
+                    css_path='../../assets/styles.css',
+                    icons_path='../../assets/icons',
+                    provider=provider,
+                    version=version,
+                    nav_tree=version['nav_tree'],
+                    nav_tree_by_type=version['nav_tree_by_type'],
+                    version_anchors=version_anchors,
+                    home_link='../../index.html',
+                    build_label=self.build_label,
+                    base_url=self.base_url,
+                )
+                (provider_dir / f"{version['version']}.html").write_text(html, encoding='utf-8')
+
+            # index.html — meta-refresh to latest
+            latest_url = f"{provider['latest_version']}.html"
+            (provider_dir / 'index.html').write_text(
+                self._render_redirect_stub(latest_url, label=f"{provider['name']} {provider['latest_version']}"),
+                encoding='utf-8',
             )
-            output_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(html)
+
+            # Legacy <slug>.html stub — refresh to <slug>/index.html
+            legacy_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
+            legacy_path.write_text(
+                self._render_redirect_stub(f"{provider['slug']}/index.html", label=provider['name']),
+                encoding='utf-8',
+            )
+
+    @staticmethod
+    def _build_version_anchors(provider: Dict) -> Dict[str, List[str]]:
+        """Map version -> list of doc anchors available in that version."""
+        return {
+            v['version']: [d['slug'] for d in v['docs']]
+            for v in provider['versions']
+        }
+
+    @staticmethod
+    def _render_redirect_stub(target_relative_url: str, label: str) -> str:
+        """Tiny static-site-friendly meta-refresh page."""
+        return (
+            f"<!doctype html>\n"
+            f"<html lang=\"en\"><head>"
+            f"<meta charset=\"utf-8\">"
+            f"<meta http-equiv=\"refresh\" content=\"0; url={target_relative_url}\">"
+            f"<title>Redirecting to {label}</title>"
+            f"<link rel=\"canonical\" href=\"{target_relative_url}\">"
+            f"</head><body>"
+            f"<noscript><a href=\"{target_relative_url}\">Continue to {label}</a></noscript>"
+            f"</body></html>\n"
+        )
 
     def _generate_registry(self):
         """Generate registry.json - a document registry for APIs, Skills, and Schemas."""
