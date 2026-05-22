@@ -19,7 +19,7 @@ from typing import Dict, List, Optional, Tuple
 from ruamel.yaml import YAML
 
 from .parsers import parse_oas, parse_skill, parse_mcp, parse_terraform_doc
-from .utils import get_category
+from .utils import get_category, is_valid_version_dirname, sort_versions_desc
 
 
 def _resolve_skill_type(skill_dir: Path) -> Optional[str]:
@@ -282,8 +282,6 @@ def discover_terraform(repo_root: Path) -> List[Dict]:
     - ``docs``, ``nav_tree``, ``nav_tree_by_type``, ``doc_count``, ``install_info``:
       aliases of the latest version's fields (preserved for homepage card compat)
     """
-    from .utils import is_valid_version_dirname, sort_versions_desc
-
     terraform_dir = repo_root / 'terraform'
     if not terraform_dir.exists():
         return []
@@ -296,24 +294,27 @@ def discover_terraform(repo_root: Path) -> List[Dict]:
             continue
 
         # Enumerate version subdirs
-        version_dirs: Dict[str, Path] = {}
+        candidates: List[Path] = []
         for child in sorted(provider_dir.iterdir()):
             if not child.is_dir():
                 continue
             if not is_valid_version_dirname(child.name):
                 print(f"  ⚠  Skipping non-semver directory: {provider_dir.name}/{child.name}")
                 continue
-            version_dirs[child.name] = child
+            candidates.append(child)
 
-        if not version_dirs:
+        if not candidates:
             continue
 
-        sorted_versions = sort_versions_desc(list(version_dirs.keys()))
+        sorted_versions = sort_versions_desc([c.name for c in candidates])
+        by_name = {c.name: c for c in candidates}
         version_entries: List[Dict] = []
         for idx, version in enumerate(sorted_versions):
-            entry = _parse_version_dir(version_dirs[version], version, is_latest=(idx == 0))
+            entry = _parse_version_dir(by_name[version], version, is_latest=(idx == 0))
             if entry is not None:
                 version_entries.append(entry)
+            else:
+                print(f"  ⚠  Skipping empty version directory: {provider_dir.name}/{version}")
 
         if not version_entries:
             continue

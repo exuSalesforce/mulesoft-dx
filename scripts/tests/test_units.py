@@ -1676,7 +1676,6 @@ class TestSemver:
 
 class TestDiscoverTerraform:
     def test_discovers_versions_sorted_desc(self, make_tf_repo):
-        from portal_generator.discovery import discover_terraform
         repo = make_tf_repo({
             "anypoint-provider": {
                 "1.10.0": {"provider.json": {"local_name": "anypoint", "version": "1.10.0"}, "resources": ["a.md"]},
@@ -1694,7 +1693,6 @@ class TestDiscoverTerraform:
         assert prov["versions"][1]["is_latest"] is False
 
     def test_top_level_keys_alias_latest(self, make_tf_repo):
-        from portal_generator.discovery import discover_terraform
         repo = make_tf_repo({
             "anypoint-provider": {
                 "1.0.0": {"provider.json": {"local_name": "anypoint", "version": "1.0.0"}, "resources": ["latest.md"]},
@@ -1705,10 +1703,14 @@ class TestDiscoverTerraform:
         latest_docs_names = [d["page_title"] for d in prov["docs"]]
         assert "latest.md" in latest_docs_names
         assert "old.md" not in latest_docs_names
-        assert prov["nav_tree"] is prov["versions"][0]["nav_tree"]
+        latest = prov["versions"][0]
+        assert prov["docs"] is latest["docs"]
+        assert prov["nav_tree"] is latest["nav_tree"]
+        assert prov["nav_tree_by_type"] is latest["nav_tree_by_type"]
+        assert prov["doc_count"] == latest["doc_count"]
+        assert prov["install_info"] is latest["install_info"]
 
     def test_rejects_invalid_version_dirname(self, make_tf_repo, capsys):
-        from portal_generator.discovery import discover_terraform
         repo = make_tf_repo({
             "anypoint-provider": {
                 "1.0.0":      {"provider.json": {"local_name": "anypoint", "version": "1.0.0"}, "resources": ["a.md"]},
@@ -1721,7 +1723,6 @@ class TestDiscoverTerraform:
         assert "not-a-ver" in captured
 
     def test_provider_with_no_valid_versions_is_dropped(self, make_tf_repo):
-        from portal_generator.discovery import discover_terraform
         repo = make_tf_repo({
             "broken-provider": {
                 "garbage": {"provider.json": {}, "resources": ["a.md"]},
