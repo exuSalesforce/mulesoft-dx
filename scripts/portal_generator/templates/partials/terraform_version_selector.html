@@ -1,6 +1,6 @@
 {# Version selector for a Terraform provider page.
    Inputs: provider, version, version_anchors (dict of version -> [doc_slugs]). #}
-<div class="tf-version-selector" role="group" aria-label="Terraform provider version">
+<div class="tf-version-selector">
   <label for="tf-version-select">Version</label>
   <select id="tf-version-select"
           data-provider-slug="{{ provider.slug }}"
@@ -22,9 +22,14 @@
         var target = sel.value;
         var current = sel.dataset.currentVersion;
         if (target === current) return;
-        var fragment = window.location.hash.replace(/^#doc-/, '');
-        var has = anchors[target] && anchors[target].indexOf(fragment) !== -1;
-        var url = target + '.html' + (has && fragment ? '#doc-' + fragment : '');
+        var hash = window.location.hash;
+        var fragment = '';
+        if (hash.indexOf('#doc-') === 0) {
+          fragment = hash.slice('#doc-'.length);
+        }
+        var slugs = anchors[target] || [];
+        var has = fragment && slugs.indexOf(fragment) !== -1;
+        var url = target + '.html' + (has ? '#doc-' + fragment : '');
         window.location.href = url;
       });
     })();

@@ -4,10 +4,12 @@ Main portal generator orchestrator.
 Coordinates discovery, rendering, and file output to produce the complete portal.
 """
 
+import html as _html
 import json
 import shutil
 from pathlib import Path
 from typing import Dict, List
+from urllib.parse import quote as _urlquote
 
 from .discovery import discover_apis, discover_terraform, calculate_stats
 from .builders.tree_builder import build_operation_tree
@@ -621,16 +623,24 @@ class PortalGenerator:
 
     @staticmethod
     def _render_redirect_stub(target_relative_url: str, label: str) -> str:
-        """Tiny static-site-friendly meta-refresh page."""
+        """Tiny static-site-friendly meta-refresh page.
+
+        Both inputs are escaped: ``label`` via :func:`html.escape` for HTML
+        text contexts, ``target_relative_url`` via :func:`urllib.parse.quote`
+        with ``safe='/.-#?='`` for use inside attribute values.
+        """
+        url = _urlquote(target_relative_url, safe="/.-#?=&")
+        label_safe = _html.escape(label, quote=True)
+        url_attr = _html.escape(url, quote=True)
         return (
             f"<!doctype html>\n"
             f"<html lang=\"en\"><head>"
             f"<meta charset=\"utf-8\">"
-            f"<meta http-equiv=\"refresh\" content=\"0; url={target_relative_url}\">"
-            f"<title>Redirecting to {label}</title>"
-            f"<link rel=\"canonical\" href=\"{target_relative_url}\">"
+            f"<meta http-equiv=\"refresh\" content=\"0; url={url_attr}\">"
+            f"<title>Redirecting to {label_safe}</title>"
+            f"<link rel=\"canonical\" href=\"{url_attr}\">"
             f"</head><body>"
-            f"<noscript><a href=\"{target_relative_url}\">Continue to {label}</a></noscript>"
+            f"<noscript><a href=\"{url_attr}\">Continue to {label_safe}</a></noscript>"
             f"</body></html>\n"
         )
 
