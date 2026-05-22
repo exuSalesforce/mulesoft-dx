@@ -49,7 +49,6 @@ pub fn assert_violation_generated(
 // rejection path. For example, for rate-limiting: send N+1 requests
 // quickly. For JWT: send a request with no Authorization header.
 #[test]
-#[ignore = "enable once your policy emits violations on rejection"]
 fn rejected_request_emits_violation() {
     let mut tester = UnitTestBuilder::default()
         .with_backend(ok_backend)
