@@ -1630,3 +1630,49 @@ class TestDiscoverTerraform:
         (hidden_dir / 'anypoint_api_instance.md').write_text(MINIMAL_TERRAFORM_MD)
 
         assert discover_terraform(tmp_path) == []
+
+
+import pytest
+from portal_generator.utils import parse_semver, sort_versions_desc, is_valid_version_dirname
+
+
+class TestSemver:
+    def test_parse_semver_strips_v_prefix(self):
+        assert parse_semver("v1.2.3") == (1, 2, 3, "")
+
+    def test_parse_semver_no_prefix(self):
+        assert parse_semver("0.0.6") == (0, 0, 6, "")
+
+    def test_parse_semver_with_prerelease(self):
+        assert parse_semver("1.0.0-beta.1") == (1, 0, 0, "beta.1")
+
+    def test_parse_semver_invalid_raises(self):
+        with pytest.raises(ValueError):
+            parse_semver("resources")
+
+    def test_parse_semver_partial_raises(self):
+        with pytest.raises(ValueError):
+            parse_semver("1.2")
+
+    def test_sort_versions_desc_basic(self):
+        assert sort_versions_desc(["0.0.6", "1.10.0", "1.9.0", "0.1.0"]) == [
+            "1.10.0", "1.9.0", "0.1.0", "0.0.6",
+        ]
+
+    def test_sort_versions_desc_with_v_prefix(self):
+        assert sort_versions_desc(["v1.0.0", "v0.9.0", "v2.0.0"]) == [
+            "v2.0.0", "v1.0.0", "v0.9.0",
+        ]
+
+    def test_sort_versions_desc_release_beats_prerelease(self):
+        assert sort_versions_desc(["1.0.0-beta.1", "1.0.0"]) == ["1.0.0", "1.0.0-beta.1"]
+
+    def test_is_valid_version_dirname_true(self):
+        assert is_valid_version_dirname("1.2.3") is True
+        assert is_valid_version_dirname("v1.2.3") is True
+        assert is_valid_version_dirname("1.0.0-rc.1") is True
+
+    def test_is_valid_version_dirname_false(self):
+        assert is_valid_version_dirname("resources") is False
+        assert is_valid_version_dirname("1.2") is False
+        assert is_valid_version_dirname("data-sources") is False

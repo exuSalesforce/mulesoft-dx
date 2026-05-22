@@ -2,7 +2,8 @@
 Utility functions and constants for the portal generator.
 """
 
-from typing import Dict
+import re
+from typing import Dict, List, Tuple
 
 # ============================================================================
 # Category Mapping
@@ -46,3 +47,46 @@ CATEGORY_MAPPING = {
 def get_category(api_name: str) -> str:
     """Get category for an API"""
     return CATEGORY_MAPPING.get(api_name, 'Platform')
+
+
+# ============================================================================
+# Semver helpers
+# ============================================================================
+
+_SEMVER_RE = re.compile(
+    r"^v?(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z0-9.-]+))?(?:\+[A-Za-z0-9.-]+)?$"
+)
+
+
+def parse_semver(version_str: str) -> Tuple[int, int, int, str]:
+    """Parse a semver string into ``(major, minor, patch, prerelease)``."""
+    match = _SEMVER_RE.match(version_str)
+    if not match:
+        raise ValueError(f"not a valid semver: {version_str!r}")
+    major, minor, patch, pre = match.groups()
+    return int(major), int(minor), int(patch), pre or ""
+
+
+def is_valid_version_dirname(name: str) -> bool:
+    """Return True if ``name`` is a syntactically valid semver directory name."""
+    return _SEMVER_RE.match(name) is not None
+
+
+def _prerelease_key(pre: str):
+    if not pre:
+        return (1,)
+    parts = []
+    for ident in pre.split("."):
+        if ident.isdigit():
+            parts.append((0, int(ident)))
+        else:
+            parts.append((1, ident))
+    return (0, parts)
+
+
+def sort_versions_desc(versions: List[str]) -> List[str]:
+    """Return ``versions`` sorted descending by semver precedence."""
+    def key(v: str):
+        major, minor, patch, pre = parse_semver(v)
+        return (major, minor, patch, _prerelease_key(pre))
+    return sorted(versions, key=key, reverse=True)
