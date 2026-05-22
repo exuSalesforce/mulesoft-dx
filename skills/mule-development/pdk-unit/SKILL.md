@@ -19,7 +19,7 @@ Drive the developer from "I have a policy crate but no tests" to "`make test` is
 
 - **`pdk-unit` (this skill)** — in-process, fast (milliseconds), uses `#[test]` + `UnitTestBuilder`, lives in `src/tests/`. Mocks upstreams with closures. Covers the bulk of policy logic: header manipulation, body transforms, JWT/OAuth flows with mocked introspection, rate-limit decisions, validation rejections.
 - **`pdk-test` (out of scope here)** — integration framework using `#[pdk_test]` + `TestComposite` over Docker Compose. Slow (tens of seconds), real Flex routing. The scaffold ships an example at `tests/requests.rs`. Use when behavior depends on real Flex plumbing (TLS termination, multi-policy chains, listener config). Not owned by this skill.
-- **`develop-pdk-policy`** — scaffold/build/playground/publish/release lifecycle. Start there if no project exists yet.
+- **`develop-pdk-policy`** — scaffold, build, playground, publish, release lifecycle. Start there if no project exists yet.
 
 ## Step 1: Decide unit vs integration
 
