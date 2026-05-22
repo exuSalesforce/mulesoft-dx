@@ -19,6 +19,9 @@ Trigger on any request shaped like "how do I <thing> in PDK?", "show me a PDK te
 ## When NOT to use this skill
 
 - **Scaffolding, building, publishing, releasing, upgrading PDK** → use `develop-pdk-policy`. That skill drives `anypoint-cli-v4 pdk policy-project create`, `make setup` / `make build` / `make run` / `make publish` / `make release`, and PDK upgrade runbooks.
+- **Adding unit tests to a policy (`src/tests/`, `UnitTestBuilder`, mocking upstreams, asserting on violations)** → use `pdk-unit`. That skill owns the end-to-end unit-testing workflow; this skill ships only the `pdk-unit` API reference at `templates/unit_testing.md`.
+- **Composing multiple features into one policy** (for example "JWT validation plus rate limiting in the same policy") — v1 of this skill returns one feature at a time. Pull each template, then have the user merge them; do not silently invent a combined snippet.
+- **Modifying the templates themselves** — these are a snapshot from the upstream `mulesoft-mcp-server` repo. Treat them as read-only canonical references.
 
 ## How to use a template
 
@@ -102,6 +105,7 @@ Trigger on any request shaped like "how do I <thing> in PDK?", "show me a PDK te
 |---|---|---|
 | `cors` | `templates/cors.rs` | Handle CORS preflight and response headers. |
 | `stop_iteration` | `templates/stop_iteration/` | Mutate body and headers in a single state transition (multi-file: `lib.rs` + `Cargo.toml.snippet` — requires PDK 1.8.0+ with `enable_stop_iteration`). |
+| `unit_testing` | `templates/unit_testing.md` | `pdk-unit` API reference (setup + worked example using `UnitTestBuilder`). For the end-to-end unit-testing workflow — wiring `src/tests/`, mocking upstreams, asserting on violations — use the sibling skill `pdk-unit`. |
 
 ## Multi-file features
 

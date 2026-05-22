@@ -298,6 +298,8 @@ If traffic still hits the old behavior after both steps, confirm in Runtime Mana
 - **PDK upgrade reference:** https://docs.mulesoft.com/pdk/latest/policies-pdk-upgrade-pdk
 - **PDK overview:** https://docs.mulesoft.com/pdk/latest/
 - **Custom policy examples (docs):** https://docs.mulesoft.com/pdk/latest/policies-pdk-policy-templates
+- **Sibling skill `pdk-templates`:** vetted Rust snippets for 30 PDK features (JWT, OAuth2, rate limiting, header manipulation, gRPC, DataWeave, etc.) — drop-in code for `src/lib.rs`.
+- **Sibling skill `pdk-unit`:** unit-testing workflow for custom policies — wire `src/tests/`, write `UnitTestBuilder` tests, mock upstreams, assert on responses/violations, run `make test`.
 
 ---
 
