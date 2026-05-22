@@ -2,7 +2,7 @@
 name: pdk-unit
 description: Write and run unit tests for custom Flex Gateway policies built with the Policy Development Kit (PDK) — wire up `src/tests/`, build a first `UnitTestBuilder` test, mock HTTP/gRPC upstreams with closures or `TraceBackend`, factor reusable `TestConfig` helpers, assert on responses / headers / violations, run with `make test` or `cargo test`, troubleshoot init-sleep races, authority mismatches, and feature-gate skew. Use whenever the user mentions "PDK unit test", "pdk-unit", "UnitTestBuilder", "test my policy", "cargo test PDK", "mock backend PDK", "Flex Gateway policy unit testing", `with_http_upstream_from_authority`, `with_entrypoint`, `TraceBackend`, or asks "how do I test a Flex Gateway policy", "how do I mock an upstream in pdk-unit", "why is my policy timer not firing in tests". For full `pdk-unit` API reference see `pdk-templates/templates/unit_testing.md`. For scaffolding / build / publish see `develop-pdk-policy`.
 license: Apache-2.0
-compatibility: Requires `pdk-unit` 1.4.0+ as a `[dev-dependencies]` entry (the scaffold from `anypoint-cli-v4 pdk policy-project create` adds it automatically). Some patterns require feature gates that vary by PDK version — `experimental` and `experimental_local_mode` for advanced fixtures, `enable_stop_iteration` for policies using `into_headers_body_state` / `into_body_state` (PDK 1.8.0+). The `pdk-unit` crate must enable the same feature flags as the matching `pdk` dependency.
+compatibility: Requires `pdk-unit` 1.8.0+ as a `[dev-dependencies]` entry (the scaffold from `anypoint-cli-v4 pdk policy-project create` adds it automatically). Some patterns require feature gates that vary by PDK version — `experimental` and `experimental_local_mode` for advanced fixtures, `enable_stop_iteration` for policies using `into_headers_body_state` / `into_body_state` (PDK 1.8.0+). The `pdk-unit` crate must enable the same feature flags as the matching `pdk` dependency.
 metadata:
   author: mule-dx-tooling
   version: "1.0.0"
@@ -50,7 +50,6 @@ The scaffold from `anypoint-cli-v4 pdk policy-project create` ships `tests/` (in
 
 3. **Verify dev-dependencies.** The scaffold adds `pdk-unit = "<version>"` to `[dev-dependencies]` in `Cargo.toml`. Confirm two things:
    - The `pdk-unit` version matches the `pdk` version in `[dependencies]` (a `pdk` 1.8.0 + `pdk-unit` 1.7.0 mix usually fails to link).
-   - The feature flags match. If `pdk` enables `enable_stop_iteration`, `pdk-unit` must enable it too — same goes for `experimental` and `experimental_local_mode`. Mismatch produces a confusing linker error rather than a clean compile error.
 
 ## Step 3: Write your first test
 
@@ -158,20 +157,6 @@ cargo test                                 # ALL tests (unit AND integration)
 **Cause**: The authority string passed to `with_http_upstream_from_authority` does not match what the policy resolves `&config.service` to at runtime. Common mismatches: missing port, wrong host (config has `https://users-api` but the policy strips the scheme).
 
 **Fix**: Print the resolved authority once from inside the policy (`info!("calling {:?}", &config.service);`), run any test, and copy the exact string. Pin it as a `const UPSTREAM_AUTHORITY: &str = "...";` in `src/tests/common.rs`.
-
-### Linker error: `feature 'enable_stop_iteration' is required`
-
-**Cause**: `pdk-unit` (dev-dep) does not enable the same feature flags as `pdk` (dep). PDK 1.8.0+ policies that use `into_headers_body_state` or `into_body_state` require `enable_stop_iteration` on both crates.
-
-**Fix**: In `Cargo.toml`:
-```toml
-[dependencies]
-pdk = { version = "1.8.0", features = ["enable_stop_iteration"] }
-
-[dev-dependencies]
-pdk-unit = { version = "1.8.0", features = ["enable_stop_iteration"] }
-```
-Same applies to `experimental` and `experimental_local_mode` if your policy uses them.
 
 ### `with_entrypoint(crate::configure)` does not compile
 
