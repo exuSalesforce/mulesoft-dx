@@ -269,15 +269,15 @@ paths:
     post:
       tags:
       - Scanner Configuration
-      summary: Publish assets after manual review
-      description: Updates ignored status for staging assets and signals the workflow to proceed with publication.
+      summary: Publish services after manual review
+      description: Updates ignored status for staged services and signals the workflow to proceed with publication.
       operationId: publishAssetsAfterReview
       parameters:
       - $ref: '#/components/parameters/XOrigin_organizationId_Path'
       - $ref: '#/components/parameters/XOrigin_scannerConfigurationId_Path'
       - $ref: '#/components/parameters/XOrigin_scanRunId_Path'
       requestBody:
-        description: List of staging assets and ignored flags captured during manual review.
+        description: List of staged services and ignored flags captured during manual review.
         required: true
         content:
           application/json:
@@ -301,7 +301,7 @@ paths:
               - content
       responses:
         "200":
-          description: Successfully updated assets and triggered publication
+          description: Successfully updated services and triggered publication
         "400":
           description: Bad request - invalid request body or parameters
         "404":
