@@ -701,7 +701,7 @@ class TestMcpDetailPage:
         assert len(mcp_entries) == 1
         entry = mcp_entries[0]
         assert entry['$id'] == 'urn:mcp:test-mcp'
-        assert entry['href'] == 'mcps/test-mcp/mcp.yaml'
+        assert entry['href'] == 'mcps/test-mcp/server.json'
         assert entry['docs'] == 'mcps/test-mcp.html'
         assert entry['tool_count'] == 1
 

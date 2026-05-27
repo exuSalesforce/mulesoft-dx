@@ -12,7 +12,9 @@ Scans the repository for:
 """
 
 import json
+import os
 import re
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -136,7 +138,43 @@ def discover_skills(repo_root: Path) -> Tuple[Dict[str, List[Dict]], Dict[str, L
     return skills_by_api, skills_by_mcp, all_skills
 
 
-def discover_apis(repo_root: Path) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+def _parse_single_api(api_dir_path: str) -> Optional[Dict]:
+    """Worker: parse a single API directory (runs in subprocess)."""
+    api_dir = Path(api_dir_path)
+    api_yaml = api_dir / 'api.yaml'
+
+    oas_data = parse_oas(api_yaml)
+    if not oas_data:
+        return None
+
+    is_private = False
+    exchange_file = api_dir / 'exchange.json'
+    if exchange_file.exists():
+        try:
+            exchange_data = json.loads(exchange_file.read_text(encoding='utf-8'))
+            is_private = exchange_data.get('visibility') == 'private'
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return {
+        'id': api_dir.name,
+        'slug': api_dir.name,
+        'name': oas_data['title'],
+        'version': oas_data['version'],
+        'description': oas_data['description'][:200] + '...' if len(oas_data['description']) > 200 else oas_data['description'],
+        'full_description': oas_data['description'],
+        'category': get_category(api_dir.name),
+        'operation_count': oas_data['operation_count'],
+        'operations': oas_data['operations'],
+        'servers': oas_data['servers'],
+        'security': oas_data['security'],
+        'security_schemes': oas_data['security_schemes'],
+        'tags': oas_data['tags'],
+        'private': is_private,
+    }
+
+
+def discover_apis(repo_root: Path, workers: int = 0) -> Tuple[List[Dict], List[Dict], List[Dict]]:
     """Discover all APIs, MCP servers, and skills in the repository.
 
     Returns ``(apis, mcp_servers, all_discovered_skills)`` where
@@ -145,6 +183,8 @@ def discover_apis(repo_root: Path) -> Tuple[List[Dict], List[Dict], List[Dict]]:
     """
     apis: List[Dict] = []
     mcp_servers: List[Dict] = []
+    if workers <= 0:
+        workers = os.cpu_count() or 4
 
     # Discover skills once (top-level skills/ folder)
     skills_by_api, skills_by_mcp, all_discovered_skills = discover_skills(repo_root)
@@ -157,62 +197,41 @@ def discover_apis(repo_root: Path) -> Tuple[List[Dict], List[Dict], List[Dict]]:
         print("⚠️  Warning: apis/ directory not found")
         return [], [], all_discovered_skills
 
+    # Collect API directories
+    api_dirs = []
     for api_dir in sorted(apis_dir.iterdir()):
-        if not api_dir.is_dir():
+        if not api_dir.is_dir() or api_dir.name.startswith('.'):
             continue
-
-        # Skip special directories
-        if api_dir.name.startswith('.'):
+        if not (api_dir / 'api.yaml').exists():
             continue
+        api_dirs.append(api_dir)
 
-        api_yaml = api_dir / 'api.yaml'
-        if not api_yaml.exists():
-            continue
+    # Parse APIs in parallel
+    print(f"  ⚡ Parsing {len(api_dirs)} API specs across {workers} workers...")
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_parse_single_api, str(d)): d.name for d in api_dirs}
+        for future in as_completed(futures):
+            api_name = futures[future]
+            exc = future.exception()
+            if exc:
+                print(f"  ❌ Error parsing {api_name}: {exc}")
+                continue
+            api_data = future.result()
+            if not api_data:
+                continue
+            # Attach skills
+            skills = skills_by_api.get(api_data['slug'], [])
+            api_data['skills'] = skills
+            api_data['skill_count'] = len(skills)
+            apis.append(api_data)
 
-        print(f"  📄 Found API: {api_dir.name}")
+    # Sort to maintain deterministic order
+    apis.sort(key=lambda a: a['slug'])
 
-        # Parse OAS
-        oas_data = parse_oas(api_yaml)
-        if not oas_data:
-            continue
-
-        # Read exchange.json for visibility metadata
-        is_private = False
-        exchange_file = api_dir / 'exchange.json'
-        if exchange_file.exists():
-            try:
-                exchange_data = json.loads(exchange_file.read_text(encoding='utf-8'))
-                is_private = exchange_data.get('visibility') == 'private'
-            except (json.JSONDecodeError, OSError):
-                pass
-
-        # Look up skills that reference this API
-        skills = skills_by_api.get(api_dir.name, [])
-
-        # Build API data
-        api_data = {
-            'id': api_dir.name,
-            'slug': api_dir.name,
-            'name': oas_data['title'],
-            'version': oas_data['version'],
-            'description': oas_data['description'][:200] + '...' if len(oas_data['description']) > 200 else oas_data['description'],
-            'full_description': oas_data['description'],
-            'category': get_category(api_dir.name),
-            'operation_count': oas_data['operation_count'],
-            'operations': oas_data['operations'],
-            'servers': oas_data['servers'],
-            'security': oas_data['security'],
-            'security_schemes': oas_data['security_schemes'],
-            'tags': oas_data['tags'],
-            'skills': skills,
-            'skill_count': len(skills),
-            'private': is_private,
-        }
-
-        if skills:
-            print(f"    🎯 Found {len(skills)} skill(s)")
-
-        apis.append(api_data)
+    for api_data in apis:
+        print(f"  📄 Found API: {api_data['slug']}")
+        if api_data['skill_count']:
+            print(f"    🎯 Found {api_data['skill_count']} skill(s)")
 
     print(f"\n✅ Discovered {len(apis)} APIs")
 
