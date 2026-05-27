@@ -8,7 +8,7 @@ description: |
 
 ## Overview
 
-Creates a complete scanner configuration that can discover and import services (such as AI agents, MCP servers, and API metadata) from external platforms into Anypoint Exchange. This involves selecting a target system, creating a connection with credentials, and configuring the scanner.
+Creates a complete scanner configuration that can discover and import services (such as AI agents, MCP servers, and API metadata) from external platforms into Anypoint Exchange. This involves selecting a target system, validating credentials, and configuring the scanner.
 
 **What you'll build:** A fully configured scanner that can discover services from your chosen cloud platform (AWS Bedrock, Microsoft Copilot, Google Vertex AI, etc.)
 
@@ -64,58 +64,55 @@ outputs:
 - **401 Unauthorized**: Verify your authorization token is valid
 - **Empty list**: Your organization may not have access to certain target systems
 
-## Step 2: Create a Connection
+## Step 2: Validate Connection Credentials
 
-Create a connection with credentials to access your chosen target system.
+Validate the credentials you plan to use for scanner configuration.
 
 **What you'll need:**
-- Target system ID from Step 1
+- Target system type from Step 1
 - Authentication credentials for the platform (varies by target system)
-- A name for your connection
 
-**Action:** Create a connection with your platform credentials.
+**Action:** Test connectivity with your platform credentials.
 
 ```yaml
 api: urn:api:agent-scanner-configuration-service
-operationId: createConnection
+operationId: testConnection
 inputs:
   organizationId:
     from:
       variable: organizationId
     description: Same organization ID as Step 1
+  targetSystemType:
+    from:
+      variable: targetSystemType
+    description: Target system type from Step 1 (for example, bedrock, mscopilot, vertex)
   requestBody:
     userProvided: true
     description: |
-      Connection details including:
-      - name: Display name for the connection
-      - targetSystemId: ID from Step 1
+      Connection test parameters including:
       - authScheme: Authentication scheme (e.g., "accessKey", "oauth2")
       - authParameters: JSON with credentials (varies by platform)
     example: |
       {
-        "name": "My AWS Bedrock Connection",
-        "targetSystemId": "uuid-from-step-1",
         "authScheme": "accessKey",
         "authParameters": "{\"accessKeyId\":\"...\",\"secretAccessKey\":\"...\",\"region\":\"us-east-1\"}"
       }
-outputs:
-  - name: connectionId
-    path: $
-    description: The UUID of the created connection
+outputs: []
 ```
 
-**What happens next:** The connection is created and stored securely. You'll receive a connection ID to use in the scanner configuration.
+**What happens next:** You confirm whether the credentials are valid before creating the scanner configuration.
 
 **Common issues:**
 - **400 Bad Request**: Check that authParameters JSON is valid and contains required fields
-- **404 Not Found**: Verify the targetSystemId exists
+- **424 Failed Dependency**: Target platform rejected or could not validate the credentials
 
 ## Step 3: Create Scanner Configuration
 
 Create the scanner configuration that will use your connection to discover services.
 
 **What you'll need:**
-- Connection ID from Step 2
+- Target system ID from Step 1
+- Authentication details validated in Step 2
 - A name and schedule for the scanner
 
 **Action:** Create the scanner configuration.
@@ -144,8 +141,9 @@ inputs:
         "schedule": "{\"frequency\":\"daily\",\"time\":\"02:00\"}",
         "runPolicy": "{}",
         "connection": {
-          "id": "connection-uuid-from-step-2",
-          "targetSystemId": "target-system-uuid-from-step-1"
+          "targetSystemId": "target-system-uuid-from-step-1",
+          "authScheme": "accessKey",
+          "authParameters": "{\"accessKeyId\":\"...\",\"secretAccessKey\":\"...\",\"region\":\"us-east-1\"}"
         },
         "notificationEnabled": false
       }
@@ -165,7 +163,7 @@ outputs:
 After completing all steps, verify:
 
 - [ ] Target system was selected from available options
-- [ ] Connection was created with valid credentials
+- [ ] Credentials were validated successfully
 - [ ] Scanner configuration was created successfully
 - [ ] Scanner state shows as SCHEDULED or STOPPED (ready to run)
 
@@ -207,9 +205,9 @@ Now that your scanner is configured:
 
 ## Troubleshooting
 
-### Connection Test Fails
+### Connection Validation Fails
 
-**Symptoms:** Connection created but test shows FAILED status
+**Symptoms:** Credential validation request fails or returns a dependency error
 
 **Possible causes:**
 - Invalid credentials
@@ -228,12 +226,12 @@ Now that your scanner is configured:
 **Possible causes:**
 - Invalid schedule JSON format
 - Missing required fields
-- Connection ID doesn't exist
+- Invalid connection/auth payload structure
 
 **Solutions:**
 - Validate schedule JSON syntax
 - Ensure all required fields (name, schedule, runPolicy) are provided
-- Verify connection ID from Step 2
+- Verify the connection payload fields and credential format
 
 ## Related Jobs
 
