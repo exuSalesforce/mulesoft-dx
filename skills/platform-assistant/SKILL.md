@@ -226,5 +226,5 @@ Portal files (`*.md`, `*.yaml`, `*.json`) are plain-text source documents, NOT r
 
 - **secure-api**: Apply security and traffic management policies to an API instance
 - **apply-policy-to-api-instance**: Apply a specific policy to an existing API instance
-- **setup-agent-scanner**: Configure scanners to discover assets from cloud platforms
-- **run-agent-scan-and-view-results**: Execute a scanner and view discovered assets
+- **setup-service-scanner**: Configure scanners to discover services from cloud platforms
+- **run-service-scan-and-view-results**: Execute a scanner and view discovered services

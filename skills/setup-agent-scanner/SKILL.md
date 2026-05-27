@@ -1,16 +1,16 @@
 ---
-name: setup-agent-scanner
+name: setup-service-scanner
 description: |
-  Creates a scanner configuration to discover assets (such as AI agents, MCP servers, and API metadata) from external platforms like AWS Bedrock, Microsoft Copilot, or Google Vertex AI. Use when setting up scanner discovery, configuring a new scanner, connecting to cloud AI platforms, or importing discovered assets into Anypoint Exchange.
+  Creates a scanner configuration to discover services (such as AI agents, MCP servers, and API metadata) from external platforms like AWS Bedrock, Microsoft Copilot, or Google Vertex AI. Use when setting up scanner discovery, configuring a new scanner, connecting to cloud AI platforms, or importing discovered services into Anypoint Exchange.
 ---
 
 # Set Up a Scanner
 
 ## Overview
 
-Creates a complete scanner configuration that can discover and import assets (such as AI agents, MCP servers, and API metadata) from external platforms into Anypoint Exchange. This involves selecting a target system, creating a connection with credentials, and configuring the scanner.
+Creates a complete scanner configuration that can discover and import services (such as AI agents, MCP servers, and API metadata) from external platforms into Anypoint Exchange. This involves selecting a target system, creating a connection with credentials, and configuring the scanner.
 
-**What you'll build:** A fully configured scanner that can discover assets from your chosen cloud platform (AWS Bedrock, Microsoft Copilot, Google Vertex AI, etc.)
+**What you'll build:** A fully configured scanner that can discover services from your chosen cloud platform (AWS Bedrock, Microsoft Copilot, Google Vertex AI, etc.)
 
 ## Prerequisites
 
@@ -112,7 +112,7 @@ outputs:
 
 ## Step 3: Create Scanner Configuration
 
-Create the scanner configuration that will use your connection to discover assets.
+Create the scanner configuration that will use your connection to discover services.
 
 **What you'll need:**
 - Connection ID from Step 2
@@ -140,7 +140,7 @@ inputs:
     example: |
       {
         "name": "My Bedrock Scanner",
-        "description": "Scans AWS Bedrock for assets such as AI agents",
+        "description": "Scans AWS Bedrock for services such as AI agents",
         "schedule": "{\"frequency\":\"daily\",\"time\":\"02:00\"}",
         "runPolicy": "{}",
         "connection": {
@@ -180,7 +180,7 @@ Your scanner configuration now has:
 **Configured Scanner**
 - Named scanner configuration
 - Scheduled or manual execution
-- Ready to discover assets such as AI agents, MCP servers, and API metadata
+- Ready to discover services such as AI agents, MCP servers, and API metadata
 
 ## Next Steps
 
@@ -192,8 +192,8 @@ Now that your scanner is configured:
 2. **Monitor scheduled runs**
    - Check the scanner run history for automated executions
 
-3. **Review discovered assets**
-   - View staging assets to see discovered assets before publication
+3. **Review discovered services**
+   - View staging assets to see discovered services before publication
 
 ## Tips and Best Practices
 
@@ -219,7 +219,7 @@ Now that your scanner is configured:
 **Solutions:**
 - Verify credentials are correct and not expired
 - Check network/firewall rules allow access to the platform APIs
-- Ensure the credentials have read access to list assets
+- Ensure the credentials have read access to list services
 
 ### Scanner Configuration Creation Fails
 
@@ -237,4 +237,4 @@ Now that your scanner is configured:
 
 ## Related Jobs
 
-- **run-agent-scan-and-view-results**: Execute a scan and view discovered assets
+- **run-service-scan-and-view-results**: Execute a scan and view discovered services

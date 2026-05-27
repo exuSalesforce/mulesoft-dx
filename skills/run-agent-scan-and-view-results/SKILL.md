@@ -1,16 +1,16 @@
 ---
-name: run-agent-scan-and-view-results
+name: run-service-scan-and-view-results
 description: |
-  Executes a scanner and views discovered assets (such as AI agents, MCP servers, and API metadata). Use when running a scan, checking scan status, viewing scan history, reviewing discovered assets from external platforms, or importing assets into Anypoint Exchange.
+  Executes a scanner and views discovered services (such as AI agents, MCP servers, and API metadata). Use when running a scan, checking scan status, viewing scan history, reviewing discovered services from external platforms, or importing services into Anypoint Exchange.
 ---
 
 # Run Scan and View Results
 
 ## Overview
 
-Executes a scanner configuration to discover assets from an external platform, then retrieves the scan results including all discovered assets. This is useful for manually triggering scans or reviewing what was found.
+Executes a scanner configuration to discover services from an external platform, then retrieves the scan results including all discovered services. This is useful for manually triggering scans or reviewing what was found.
 
-**What you'll build:** A complete scan execution with visibility into discovered assets ready for publication to Exchange.
+**What you'll build:** A complete scan execution with visibility into discovered services ready for publication to Exchange.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ Before starting, ensure you have:
 
 ## Step 1: Execute the Scanner
 
-Trigger the scanner to start discovering assets from the configured external platform.
+Trigger the scanner to start discovering services from the configured external platform.
 
 **What you'll need:**
 
@@ -54,7 +54,7 @@ inputs:
 outputs: []
 ```
 
-**What happens next:** The scan starts asynchronously. You'll receive a 202 Accepted response. The scan runs in the background, discovering assets from the external platform.
+**What happens next:** The scan starts asynchronously. You'll receive a 202 Accepted response. The scan runs in the background, discovering services from the external platform.
 
 **Common issues:**
 
@@ -113,9 +113,9 @@ outputs:
 - **Empty results**: No scans have been run yet for this scanner
 - **Status shows FAILED**: Check the scanner configuration's lastRunStatusDetail for error information
 
-## Step 3: View Discovered Assets
+## Step 3: View Discovered Services
 
-Once the scan completes, retrieve the list of discovered assets (staging assets).
+Once the scan completes, retrieve the list of discovered services (staging assets).
 
 **What you'll need:**
 
@@ -148,7 +148,7 @@ outputs:
     description: The asset ID in Exchange (if published)
   - name: assetName
     path: $.content[*].name
-    description: Name of the discovered asset
+    description: Name of the discovered service
   - name: stagingStatus
     path: $.content[*].stagingStatus
     description: Status (NEW, EXISTING, PUBLISHED, FAILED)
@@ -157,7 +157,7 @@ outputs:
     description: What action was taken (CREATE, UPDATE, DELETE, SKIP)
 ```
 
-**What happens next:** You receive a list of all assets discovered during the scan, including their names, descriptions, and publication status.
+**What happens next:** You receive a list of all services discovered during the scan, including their names, descriptions, and publication status.
 
 ## Completion Checklist
 
@@ -165,8 +165,8 @@ After completing all steps, verify:
 
 - Scan was triggered (202 Accepted)
 - Scan run appears in history with status COMPLETED
-- Staging assets list shows discovered assets
-- Review asset details for accuracy before publication
+- Staging assets list shows discovered services
+- Review service details for accuracy before publication
 
 ## What You've Built
 
@@ -176,24 +176,24 @@ Your scan execution has produced:
 
 - Timestamped execution record
 - Status tracking (RUNNING -> COMPLETED)
-- Summary of discovered assets
+- Summary of discovered services
 
-**Discovered Assets**
+**Discovered Services**
 
-- List of assets from the external platform
-- Asset metadata (name, description, capabilities)
+- List of services from the external platform
+- Service metadata (name, description, capabilities)
 - Staging status for Exchange publication
 
 ## Next Steps
 
-Now that you've seen the discovered assets:
+Now that you've seen the discovered services:
 
-1. **Review asset details**
-  - Check the asset payload for each discovered asset
+1. **Review service details**
+  - Check the service payload for each discovered service
 2. **Monitor publication**
   - Agents with stagingStatus PUBLISHED are live in Exchange
 3. **Handle failures**
-  - Review assets with stagingStatus FAILED for issues
+  - Review services with stagingStatus FAILED for issues
 4. **Schedule regular scans**
   - Configure automatic scheduled scans for continuous discovery
 
@@ -202,15 +202,15 @@ Now that you've seen the discovered assets:
 ### Monitoring Scans
 
 - **Poll status**: For long-running scans, poll getScannerRunHistory every 30-60 seconds
-- **Check summary**: The scan run summary field contains counts of discovered/updated/failed assets
+- **Check summary**: The scan run summary field contains counts of discovered/updated/failed services
 
 ### Understanding Staging Status
 
-- **NEW**: Asset discovered for the first time
-- **EXISTING**: Asset already known, checked for updates
+- **NEW**: Service discovered for the first time
+- **EXISTING**: Service already known, checked for updates
 - **PUBLISHED**: Successfully published to Exchange
 - **FAILED**: Publication failed (check summary for details)
-- **PENDING_UPDATE**: Asset has changes pending publication
+- **PENDING_UPDATE**: Service has changes pending publication
 
 ## Troubleshooting
 
@@ -220,7 +220,7 @@ Now that you've seen the discovered assets:
 
 **Possible causes:**
 
-- Large number of assets to discover
+- Large number of services to discover
 - Network issues with external platform
 - Processing delays
 
@@ -230,19 +230,19 @@ Now that you've seen the discovered assets:
 - Check external platform connectivity
 - Use abort endpoint if scan appears stuck
 
-### No Assets Discovered
+### No Services Discovered
 
 **Symptoms:** Scan completes but staging assets list is empty
 
 **Possible causes:**
 
-- No assets exist in the external platform
+- No services exist in the external platform
 - Connection credentials lack read permissions
-- Platform-specific filters exclude all assets
+- Platform-specific filters exclude all services
 
 **Solutions:**
 
-- Verify assets exist in the source platform
+- Verify services exist in the source platform
 - Check connection credentials have appropriate permissions
 - Review scanner configuration parameters
 
@@ -264,5 +264,5 @@ Now that you've seen the discovered assets:
 
 ## Related Jobs
 
-- **setup-agent-scanner**: Create a new scanner configuration
+- **setup-service-scanner**: Create a new scanner configuration
 
