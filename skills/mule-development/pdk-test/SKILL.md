@@ -18,8 +18,8 @@ Drive the developer from "I have a policy that compiles to WASM but no integrati
 ## When to use this skill vs alternatives
 
 - **`pdk-test` (this skill)** — Docker-based integration tests using `#[pdk_test]` + `TestComposite`. Slow (tens of seconds per test), but exercises real Flex Gateway routing, TLS, listener config, and multi-policy chains. Lives in `tests/requests.rs`.
-- **`pdk-unit`** — in-process unit tests using `#[test]` + `UnitTestBuilder`. Fast (milliseconds), mocks the proxy-wasm host. Use for most policy logic.
-- **`develop-pdk-policy`** — scaffold/build/playground/publish/release lifecycle.
+- **`pdk-unit`** — in-process unit tests using `#[test]` + `UnitTestBuilder`. Fast (milliseconds), mocks the proxy-wasm host. Use for most policy logic. Supports debugging.
+- **`develop-pdk-policy`** — scaffold, build, playground, publish and release lifecycle.
 
 Decision tree:
 - Behavior depends on real Flex routing, TLS termination, multi-policy chains, or listener config → **`pdk-test`** (this skill).
