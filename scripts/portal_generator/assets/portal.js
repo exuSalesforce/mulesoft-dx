@@ -1379,7 +1379,7 @@ function updatePlaceholder() {
     if (selectedTags.length > 0) {
         input.placeholder = '';
     } else {
-        input.placeholder = 'Search by keywords...';
+        input.placeholder = 'Search by keyword';
     }
 }
 
@@ -1430,8 +1430,44 @@ function filterByTags() {
     // Update results count and type
     updateResultsCount(visibleApis + visibleMcps + visibleSkills + visibleTerraform, selectedType);
 
+    // Highlight matched terms on visible cards
+    applyTagHighlights();
+
     // Update URL with current state
     updateURLState();
+}
+
+function applyTagHighlights() {
+    const cardLinks = document.querySelectorAll('.catalog-card-link');
+    cardLinks.forEach(cardLink => {
+        const targets = cardLink.querySelectorAll('.catalog-card-title, .catalog-card-description');
+        targets.forEach(target => {
+            // Restore original text from data-original or capture once
+            if (!target.dataset.originalText) {
+                target.dataset.originalText = target.textContent;
+            }
+            const original = target.dataset.originalText;
+            if (selectedTags.length === 0 || cardLink.style.display === 'none') {
+                target.textContent = original;
+                return;
+            }
+            target.innerHTML = highlightTerms(original, selectedTags);
+        });
+    });
+}
+
+function highlightTerms(text, terms) {
+    // Escape HTML once, then wrap matches in <mark>
+    let escaped = escapeHtml(text);
+    // Sort longest first to avoid partial matches eating multi-word tags
+    const sorted = terms.slice().sort((a, b) => b.length - a.length);
+    sorted.forEach(term => {
+        if (!term) return;
+        const escapedTerm = escapeHtml(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(' + escapedTerm + ')', 'gi');
+        escaped = escaped.replace(re, '<mark class="search-highlight">$1</mark>');
+    });
+    return escaped;
 }
 
 function updateURLState() {
@@ -2051,12 +2087,14 @@ function filterSidebar(query) {
     // Show/hide groups based on visible children
     var operationGroups = document.querySelectorAll('.nav-group');
     operationGroups.forEach(function(group) {
-        var groupItems = group.querySelectorAll('.nav-group-items li');
+        var groupItems = group.querySelectorAll(':scope > .nav-group-items > li');
         var hasVisible = false;
+        var visibleCount = 0;
 
         groupItems.forEach(function(item) {
             if (item.style.display !== 'none') {
                 hasVisible = true;
+                visibleCount++;
             }
         });
 
@@ -2074,6 +2112,16 @@ function filterSidebar(query) {
                     toggle.classList.add('expanded');
                 }
             }
+        }
+
+        // Update group count to reflect filtered results
+        var groupCountEl = group.querySelector(':scope > .nav-group-header .group-count');
+        if (groupCountEl) {
+            if (!groupCountEl.hasAttribute('data-total-count')) {
+                groupCountEl.setAttribute('data-total-count', groupCountEl.textContent);
+            }
+            var totalCount = groupCountEl.getAttribute('data-total-count');
+            groupCountEl.textContent = query ? '(' + visibleCount + ')' : totalCount;
         }
 
         // Apply highlighting to group names if searching
@@ -8451,16 +8499,25 @@ function filterTerraformSidebar(query) {
     document.querySelectorAll('.terraform-page .nav-group.tree-level-1').forEach(function(subcat) {
         var docList = subcat.querySelector(':scope > .nav-group-items');
         var hasVisible = false;
+        var visibleCount = 0;
         if (docList) {
             var items = docList.querySelectorAll(':scope > li');
             for (var i = 0; i < items.length; i++) {
-                if (items[i].style.display !== 'none') { hasVisible = true; break; }
+                if (items[i].style.display !== 'none') { hasVisible = true; visibleCount++; }
             }
         }
         subcat.style.display = (!query || hasVisible) ? '' : 'none';
 
         var header = subcat.querySelector(':scope > .nav-group-header');
         if (header) _setTerraformGroupExpanded(header, query && hasVisible);
+
+        var countEl = subcat.querySelector(':scope > .nav-group-header .group-count');
+        if (countEl) {
+            if (!countEl.hasAttribute('data-total-count')) {
+                countEl.setAttribute('data-total-count', countEl.textContent);
+            }
+            countEl.textContent = query ? '(' + visibleCount + ')' : countEl.getAttribute('data-total-count');
+        }
     });
 
     // Show/hide top-level categories (tree-level-0) based on visible subcategories
@@ -8468,10 +8525,16 @@ function filterTerraformSidebar(query) {
     document.querySelectorAll('.terraform-page .nav-group.tree-level-0').forEach(function(cat) {
         var subcatList = cat.querySelector(':scope > .nav-group-items');
         var hasVisible = false;
+        var visibleDocCount = 0;
         if (subcatList) {
             var subcats = subcatList.querySelectorAll(':scope > .nav-group');
             for (var i = 0; i < subcats.length; i++) {
-                if (subcats[i].style.display !== 'none') { hasVisible = true; break; }
+                if (subcats[i].style.display !== 'none') { hasVisible = true; }
+            }
+            // Count actual visible docs (leaf items) across all subcategories
+            var leafItems = subcatList.querySelectorAll('.nav-group.tree-level-1 .nav-group-items > li');
+            for (var j = 0; j < leafItems.length; j++) {
+                if (leafItems[j].style.display !== 'none') visibleDocCount++;
             }
         }
         cat.style.display = (!query || hasVisible) ? '' : 'none';
@@ -8479,6 +8542,14 @@ function filterTerraformSidebar(query) {
 
         var header = cat.querySelector(':scope > .nav-group-header');
         if (header) _setTerraformGroupExpanded(header, query && hasVisible);
+
+        var countEl = cat.querySelector(':scope > .nav-group-header .group-count');
+        if (countEl) {
+            if (!countEl.hasAttribute('data-total-count')) {
+                countEl.setAttribute('data-total-count', countEl.textContent);
+            }
+            countEl.textContent = query ? '(' + visibleDocCount + ')' : countEl.getAttribute('data-total-count');
+        }
     });
 
     // Toggle empty state when nothing matches

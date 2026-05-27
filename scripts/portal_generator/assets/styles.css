@@ -1825,6 +1825,20 @@ code {
     text-overflow: ellipsis;
 }
 
+/* Search match highlight on catalog cards */
+.search-highlight {
+    background: var(--color-yellow-100);
+    color: var(--color-yellow-800);
+    padding: 0 2px;
+    border-radius: var(--radius-small);
+    font-weight: var(--font-weight-semibold);
+}
+
+[data-theme="dark"] .search-highlight {
+    background: var(--color-badge-bg);
+    color: var(--color-badge-text);
+}
+
 /* Grid view: hide list-only columns */
 .catalog-card-type,
 .catalog-card-version,
@@ -5050,8 +5064,6 @@ details[open] .examples-toggle-icon {
     margin: 0;
     max-width: 100%;
     box-sizing: border-box;
-    max-height: 400px;
-    overflow-y: auto;
 }
 
 .example-code code {
@@ -7426,8 +7438,6 @@ details[open] .examples-toggle-icon {
     display: none;
     font-size: var(--font-size-3);
     color: var(--color-text-primary);
-    max-height: 500px;
-    overflow-y: auto;
     margin: 0;
 }
 
