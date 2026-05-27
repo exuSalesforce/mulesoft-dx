@@ -9959,28 +9959,43 @@ pre.mcp-install-command,
   margin-left: var(--space-sm);
 }
 
-.tf-version-selector {
-  display: flex;
+.tf-version-selector-inline {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
+  margin-right: var(--space-sm);
 }
 
-.tf-version-selector label {
-  font-size: var(--font-size-3);
-  color: var(--color-text-secondary);
-}
-
-.tf-version-selector select {
-  font-size: var(--font-size-3);
-  color: var(--color-text-primary);
+.tf-version-selector-inline .tf-version-select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 32px;
+  font-size: var(--font-size-4);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-normal);
+  line-height: 1;
+  color: #3289CE;
   background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-primary);
-  border-radius: var(--radius-medium);
-  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-slate);
+  border-radius: var(--radius-xl);
+  padding: 0 calc(var(--space-md) + var(--space-lg)) 0 1rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
 }
 
-.tf-version-selector select:focus {
+.tf-version-selector-inline .tf-version-select:hover {
+  opacity: 0.9;
+}
+
+.tf-version-selector-inline .tf-version-select:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
+}
+
+.tf-version-selector-inline .tf-version-chevron {
+  position: absolute;
+  right: 0.625rem;
+  pointer-events: none;
+  color: var(--color-primary);
 }

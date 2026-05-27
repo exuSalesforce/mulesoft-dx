@@ -1059,17 +1059,18 @@ def test_terraform_per_version_pages_generated(generated_portal):
     assert "location.hash" in legacy_text
 
 
-def test_terraform_version_selector_rendered(generated_portal):
-    """Version selector lists all versions, latest first, marked selected."""
+def test_terraform_single_version_renders_badge_not_selector(generated_portal):
+    """When a provider has only one version, the header shows a flat
+    version badge (no dropdown) — same visual as non-versioned APIs."""
     page = (generated_portal / "terraform" / "anypoint-provider" / "0.0.6.html").read_text()
     soup = BeautifulSoup(page, "html.parser")
-    selector = soup.select_one(".tf-version-selector select")
-    assert selector is not None
-    options = selector.find_all("option")
-    assert [o.get("value") for o in options] == ["0.0.6"]
-    assert options[0].get("selected") is not None
-    # Anchor metadata script tag is present
-    assert soup.select_one('script[type="application/json"]#tf-version-anchors') is not None
+    # Flat badge present
+    badge = soup.select_one(".badge.badge-version")
+    assert badge is not None
+    assert badge.get_text(strip=True) == "0.0.6"
+    # No selector rendered for single-version
+    assert soup.select_one(".tf-version-selector-inline") is None
+    assert soup.select_one("#tf-version-select") is None
 
 
 def test_homepage_terraform_card_links_to_index(generated_portal):

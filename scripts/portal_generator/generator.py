@@ -229,21 +229,25 @@ def _render_skill_page(args: Dict) -> None:
 
 
 def _render_terraform_page(args: Dict) -> None:
-    """Worker: render a single Terraform provider page (runs in subprocess)."""
+    """Worker: render a single Terraform version page (runs in subprocess)."""
     env = create_env()
     template = env.get_template('terraform_page.html')
     provider = args['provider']
+    version = args['version']
 
     html = template.render(
-        css_path='../assets/styles.css',
-        icons_path='../assets/icons',
+        css_path='../../assets/styles.css',
+        icons_path='../../assets/icons',
         provider=provider,
-        nav_tree=provider['nav_tree'],
-        nav_tree_by_type=provider['nav_tree_by_type'],
-        home_link='../index.html',
+        version=version,
+        nav_tree=version['nav_tree'],
+        nav_tree_by_type=version['nav_tree_by_type'],
+        version_anchors=args['version_anchors'],
+        home_link='../../index.html',
         build_label=args['build_label'],
         base_url=args['base_url'],
     )
+    Path(args['output_path']).parent.mkdir(parents=True, exist_ok=True)
     Path(args['output_path']).write_text(html, encoding='utf-8')
 
 
@@ -547,17 +551,26 @@ class PortalGenerator:
                 'manifest_output_dir': str(self.output_dir / 'skills' / skill_rel),
             }))
 
-        # Terraform pages
+        # Terraform pages — one task per (provider, version)
         if self.terraform_providers:
-            total_docs = sum(p['doc_count'] for p in self.terraform_providers)
-            print(f"  ✓ Queuing {len(self.terraform_providers)} Terraform provider page(s) ({total_docs} docs)...")
+            version_count = sum(len(p['versions']) for p in self.terraform_providers)
+            total_docs = sum(
+                sum(v['doc_count'] for v in p['versions']) for p in self.terraform_providers
+            )
+            print(f"  ✓ Queuing {version_count} Terraform page(s) "
+                  f"across {len(self.terraform_providers)} provider(s) ({total_docs} docs)...")
             for provider in self.terraform_providers:
-                tasks.append((_render_terraform_page, {
-                    'provider': provider,
-                    'build_label': self.build_label,
-                    'base_url': self.base_url,
-                    'output_path': str(self.output_dir / 'terraform' / f"{provider['slug']}.html"),
-                }))
+                version_anchors = self._build_version_anchors(provider)
+                provider_dir = self.output_dir / 'terraform' / provider['slug']
+                for version in provider['versions']:
+                    tasks.append((_render_terraform_page, {
+                        'provider': provider,
+                        'version': version,
+                        'version_anchors': version_anchors,
+                        'build_label': self.build_label,
+                        'base_url': self.base_url,
+                        'output_path': str(provider_dir / f"{version['version']}.html"),
+                    }))
 
         # Execute all tasks in parallel
         total = len(tasks)
@@ -573,6 +586,24 @@ class PortalGenerator:
                     print(f"    ❌ Error rendering {path}: {exc}")
                     raise exc
         print(f"  ✓ All {total} pages rendered.")
+
+        # Terraform redirect stubs (lightweight, not worth parallelizing)
+        if self.terraform_providers:
+            for provider in self.terraform_providers:
+                provider_dir = self.output_dir / 'terraform' / provider['slug']
+                provider_dir.mkdir(parents=True, exist_ok=True)
+                # index.html — meta-refresh to latest version
+                latest_url = f"{provider['latest_version']}.html"
+                (provider_dir / 'index.html').write_text(
+                    self._render_redirect_stub(latest_url, label=f"{provider['name']} {provider['latest_version']}"),
+                    encoding='utf-8',
+                )
+                # Legacy <slug>.html — redirect to versioned path
+                legacy_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
+                legacy_path.write_text(
+                    self._render_redirect_stub(f"{provider['slug']}/index.html", label=provider['name']),
+                    encoding='utf-8',
+                )
 
     def _generate_detail_pages(self):
         """Generate individual API pages (public APIs only) - sequential fallback."""
@@ -789,54 +820,6 @@ class PortalGenerator:
             return f"---{parts[1]}---\n\n{preamble}\n{parts[2]}"
         return preamble + "\n" + content
 
-    def _generate_terraform_pages(self):
-        """Generate one HTML page per (provider, version), plus index/legacy stubs."""
-        if not self.terraform_providers:
-            return
-        total_docs = sum(
-            sum(v['doc_count'] for v in p['versions']) for p in self.terraform_providers
-        )
-        version_count = sum(len(p['versions']) for p in self.terraform_providers)
-        print(
-            f"  ✓ Generating {version_count} Terraform page(s) "
-            f"across {len(self.terraform_providers)} provider(s) ({total_docs} docs)..."
-        )
-
-        template = self.env.get_template('terraform_page.html')
-
-        for provider in self.terraform_providers:
-            provider_dir = self.output_dir / 'terraform' / provider['slug']
-            provider_dir.mkdir(parents=True, exist_ok=True)
-            version_anchors = self._build_version_anchors(provider)
-
-            for version in provider['versions']:
-                html = template.render(
-                    css_path='../../assets/styles.css',
-                    icons_path='../../assets/icons',
-                    provider=provider,
-                    version=version,
-                    nav_tree=version['nav_tree'],
-                    nav_tree_by_type=version['nav_tree_by_type'],
-                    version_anchors=version_anchors,
-                    home_link='../../index.html',
-                    build_label=self.build_label,
-                    base_url=self.base_url,
-                )
-                (provider_dir / f"{version['version']}.html").write_text(html, encoding='utf-8')
-
-            # index.html — meta-refresh to latest
-            latest_url = f"{provider['latest_version']}.html"
-            (provider_dir / 'index.html').write_text(
-                self._render_redirect_stub(latest_url, label=f"{provider['name']} {provider['latest_version']}"),
-                encoding='utf-8',
-            )
-
-            # Legacy <slug>.html stub — refresh to <slug>/index.html
-            legacy_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
-            legacy_path.write_text(
-                self._render_redirect_stub(f"{provider['slug']}/index.html", label=provider['name']),
-                encoding='utf-8',
-            )
 
     @staticmethod
     def _build_version_anchors(provider: Dict) -> Dict[str, List[str]]:
