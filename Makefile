@@ -127,45 +127,60 @@ validate-all: $(REPORT_DIR)
 # Validate all APIs with governance rules
 validate-all-governed: $(REPORT_DIR)
 	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(CYAN)  Validating All APIs - With Governance Rules$(NC)"
+	@echo "$(CYAN)  Validating All APIs - With Governance Rules (parallel)$(NC)"
 	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
 	@echo ""
 	@if [ ! -f $(RULESET) ]; then \
 		echo "$(RED)Error: Ruleset not found at $(RULESET)$(NC)"; \
 		exit 1; \
 	fi; \
-	passed=0; failed=0; skipped=0; \
+	results_dir=$$(mktemp -d); \
+	pids=""; \
 	for api in $(API_DIRS); do \
 		api_name=$$(basename $$api); \
 		skip=false; \
 		for s in $(SKIP_GOVERNED); do [ "$$api_name" = "$$s" ] && skip=true; done; \
 		if $$skip; then \
-			echo "$(YELLOW)Skipping:$(NC) $$api (in SKIP_GOVERNED list)"; \
-			skipped=$$((skipped + 1)); \
-			echo ""; \
+			echo "skipped" > "$$results_dir/$$api_name.status"; \
 			continue; \
 		fi; \
-		echo "$(BLUE)Validating:$(NC) $$api"; \
-		report=$(REPORT_DIR)/$$api_name-governed-$(TIMESTAMP).txt; \
-		if $(ANYPOINT_CLI) api-project validate --location=./$$api --local-ruleset=$(RULESET) > "$$report" 2>&1; then \
-			violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
-			warnings=$$(grep -c "Severity:.*Warning" "$$report" 2>/dev/null || true); \
-			if [ "$$violations" -gt 0 ] 2>/dev/null; then \
-				echo "  $(RED)✗ FAILED$(NC) - Violations: $$violations, Warnings: $$warnings"; \
-				failed=$$((failed + 1)); \
+		( \
+			report=$(REPORT_DIR)/$$api_name-governed-$(TIMESTAMP).txt; \
+			if $(ANYPOINT_CLI) api-project validate --location=./$$api --local-ruleset=$(RULESET) > "$$report" 2>&1; then \
+				violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
+				if [ "$$violations" -gt 0 ] 2>/dev/null; then \
+					echo "failed" > "$$results_dir/$$api_name.status"; \
+				else \
+					echo "passed" > "$$results_dir/$$api_name.status"; \
+				fi; \
 			else \
-				echo "  $(GREEN)✓ PASSED$(NC) - Violations: 0, Warnings: $$warnings"; \
-				passed=$$((passed + 1)); \
+				echo "failed" > "$$results_dir/$$api_name.status"; \
 			fi; \
+			cp "$$report" "$$results_dir/$$api_name.report" 2>/dev/null || true; \
+		) & \
+		pids="$$pids $$!"; \
+	done; \
+	for pid in $$pids; do wait $$pid; done; \
+	passed=0; failed=0; skipped=0; \
+	for api in $(API_DIRS); do \
+		api_name=$$(basename $$api); \
+		status=$$(cat "$$results_dir/$$api_name.status" 2>/dev/null || echo "failed"); \
+		report="$$results_dir/$$api_name.report"; \
+		violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
+		warnings=$$(grep -c "Severity:.*Warning" "$$report" 2>/dev/null || true); \
+		if [ "$$status" = "skipped" ]; then \
+			echo "$(YELLOW)Skipping:$(NC) $$api (in SKIP_GOVERNED list)"; \
+			skipped=$$((skipped + 1)); \
+		elif [ "$$status" = "passed" ]; then \
+			echo "$(GREEN)✓ PASSED$(NC) $$api - Violations: 0, Warnings: $$warnings"; \
+			passed=$$((passed + 1)); \
 		else \
-			violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
-			warnings=$$(grep -c "Severity:.*Warning" "$$report" 2>/dev/null || true); \
-			echo "  $(RED)✗ FAILED$(NC) - Violations: $$violations, Warnings: $$warnings"; \
-			head -1 "$$report" 2>/dev/null | grep -v "^$$" | while read line; do echo "    $$line"; done; \
+			echo "$(RED)✗ FAILED$(NC) $$api - Violations: $$violations, Warnings: $$warnings"; \
 			failed=$$((failed + 1)); \
 		fi; \
-		echo ""; \
 	done; \
+	rm -rf "$$results_dir"; \
+	echo ""; \
 	echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"; \
 	echo "$(GREEN)Results:$(NC) $$passed passed, $(RED)$$failed failed$(NC), $(YELLOW)$$skipped skipped$(NC) ($(words $(API_DIRS)) total)"; \
 	echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"; \
@@ -305,7 +320,7 @@ serve-portal:
 	echo "$(GREEN)✓ Portal is being served at http://localhost:$$PORT_VAL$(NC)"; \
 	echo "$(BLUE)Press Ctrl+C to stop the server$(NC)"; \
 	echo ""; \
-	python3 -m http.server $$PORT_VAL --directory portal
+	python3 -m http.server $$PORT_VAL  --directory portal
 
 # Start CORS proxy server
 # Usage: make serve-proxy [PROXY_PORT=8080]

@@ -1034,8 +1034,7 @@ describe('getMcpEndpointForSlug', () => {
     test('resolves endpoint URL from lookup', () => {
         globalThis.__MCP_LOOKUP__ = {
             exchange: {
-                servers: [{ url: 'https://anypoint.mulesoft.com/exchange', variables: {} }],
-                transport: { kind: 'streamableHttp', path: '/mcp' },
+                servers: [{ url: 'https://anypoint.mulesoft.com/exchange/mcp', variables: {} }],
             },
         };
         withServerType('us', null, () => {
@@ -1052,16 +1051,15 @@ describe('getMcpEndpointForSlug', () => {
 
     test('returns null when no servers available', () => {
         globalThis.__MCP_LOOKUP__ = {
-            empty: { servers: [], transport: { kind: 'streamableHttp', path: '/mcp' } },
+            empty: { servers: [] },
         };
         expect(getMcpEndpointForSlug('empty')).toBeNull();
     });
 
-    test('appends transport path to server URL', () => {
+    test('returns full server URL directly', () => {
         globalThis.__MCP_LOOKUP__ = {
             test: {
-                servers: [{ url: 'https://api.example.com', variables: {} }],
-                transport: { kind: 'streamableHttp', path: '/v1/mcp' },
+                servers: [{ url: 'https://api.example.com/v1/mcp', variables: {} }],
             },
         };
         withServerType('us', null, () => {
@@ -1071,43 +1069,14 @@ describe('getMcpEndpointForSlug', () => {
         });
     });
 
-    test('handles transport path without leading slash', () => {
-        globalThis.__MCP_LOOKUP__ = {
-            test: {
-                servers: [{ url: 'https://api.example.com', variables: {} }],
-                transport: { kind: 'streamableHttp', path: 'mcp' },
-            },
-        };
-        withServerType('us', null, () => {
-            expect(getMcpEndpointForSlug('test')).toBe(
-                'https://api.example.com/mcp',
-            );
-        });
-    });
-
-    test('defaults path to /mcp when transport path is empty', () => {
-        globalThis.__MCP_LOOKUP__ = {
-            test: {
-                servers: [{ url: 'https://api.example.com', variables: {} }],
-                transport: { kind: 'streamableHttp', path: '' },
-            },
-        };
-        withServerType('us', null, () => {
-            expect(getMcpEndpointForSlug('test')).toBe(
-                'https://api.example.com/mcp',
-            );
-        });
-    });
-
     test('resolves server with region variable', () => {
         globalThis.__MCP_LOOKUP__ = {
             regional: {
                 servers: [
-                    { url: 'https://anypoint.mulesoft.com/exchange', variables: {} },
-                    { url: 'https://eu1.anypoint.mulesoft.com/exchange', variables: {} },
-                    { url: 'https://{region}.platform.mulesoft.com/exchange', variables: { region: { default: 'ca1' } } },
+                    { url: 'https://anypoint.mulesoft.com/exchange/mcp', variables: {} },
+                    { url: 'https://eu1.anypoint.mulesoft.com/exchange/mcp', variables: {} },
+                    { url: 'https://{region}.platform.mulesoft.com/exchange/mcp', variables: { region: { default: 'ca1' } } },
                 ],
-                transport: { kind: 'streamableHttp', path: '/mcp' },
             },
         };
         withServerType('eu', null, () => {

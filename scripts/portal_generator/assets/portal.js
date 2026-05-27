@@ -1031,11 +1031,7 @@ function getMcpEndpointForSlug(mcpSlug) {
     var servers = entry.servers || [];
     if (servers.length === 0) return null;
     var server = pickServerTemplate(servers);
-    var base = resolveServerUrl(server, null).replace(/\/$/, '');
-    var transport = entry.transport || {};
-    var path = transport.path || '/mcp';
-    if (path.charAt(0) !== '/') path = '/' + path;
-    return base + path;
+    return resolveServerUrl(server, null);
 }
 
 function unwrapMcpToolResponse(proxyData) {
@@ -2523,25 +2519,12 @@ function __nextMcpId() { __mcpJsonRpcId += 1; return __mcpJsonRpcId; }
 
 function __mcpEndpointUrl() {
     // server.json remotes[] already expose fully-qualified endpoint URLs
-    // (including whatever path the server uses), so the selected server URL
-    // is used verbatim. We still filter out sse / stdio remotes because the
-    // try-it console only speaks JSON-RPC over HTTP POST.
+    // (only streamableHttp remotes are included), so the selected server URL
+    // is used verbatim.
     var meta = window.__MCP_META__;
     if (!meta) return null;
     var selected = getSelectedServer(null);
     if (!selected) return null;
-
-    var remotes = meta.servers || [];
-    var match = null;
-    var normalizedSelected = selected.replace(/\/$/, '');
-    for (var i = 0; i < remotes.length; i += 1) {
-        if ((remotes[i].url || '').replace(/\/$/, '') === normalizedSelected) {
-            match = remotes[i];
-            break;
-        }
-    }
-    var kind = (match && match.transport) || (meta.transport && meta.transport.kind) || '';
-    if (kind && kind !== 'streamableHttp') return null;
     return selected;
 }
 
@@ -3660,7 +3643,7 @@ function initServerCombos() {
     var meta = window.__API_META__;
     if (!meta || !meta.servers || meta.servers.length === 0) return;
 
-    var bars = document.querySelectorAll('.operation-url-bar');
+    var bars = document.querySelectorAll('.operation-url-bar[data-path]');
     bars.forEach(function(bar) {
         var opId = bar.getAttribute('data-op-id');
         var path = bar.getAttribute('data-path');
@@ -3763,7 +3746,7 @@ function updateAllServerBars() {
     var meta = window.__API_META__;
     if (!meta || !meta.servers || meta.servers.length === 0) return;
 
-    var bars = document.querySelectorAll('.operation-url-bar');
+    var bars = document.querySelectorAll('.operation-url-bar[data-path]');
     bars.forEach(function(bar) {
         var opId = bar.getAttribute('data-op-id');
         var path = bar.getAttribute('data-path');
@@ -4477,11 +4460,13 @@ function switchResponseTab(opId, tabName) {
     var bodyContent = document.getElementById('respbody-' + opId);
     var headersContent = document.getElementById('respheaders-' + opId);
     var extractedContent = document.getElementById('respextracted-' + opId);
+    var dataContent = document.getElementById('respdata-' + opId);
 
     // Remove active class from all
     if (bodyContent) bodyContent.classList.remove('active');
     if (headersContent) headersContent.classList.remove('active');
     if (extractedContent) extractedContent.classList.remove('active');
+    if (dataContent) dataContent.classList.remove('active');
 
     // Add active class to the selected tab
     if (tabName === 'body' && bodyContent) {
@@ -4490,6 +4475,8 @@ function switchResponseTab(opId, tabName) {
         headersContent.classList.add('active');
     } else if (tabName === 'extracted' && extractedContent) {
         extractedContent.classList.add('active');
+    } else if (tabName === 'data' && dataContent) {
+        dataContent.classList.add('active');
     }
 }
 
@@ -4762,11 +4749,12 @@ function createReadOnlyAceEditor(container, content, language) {
         fontSize: '13px'
     });
 
-    // Let ACE scroll internally within the container bounds
+    // Use ace's internal scrolling within a fixed-height container
     editor.setOptions({
         minLines: 10,
-        maxLines: 50
+        maxLines: undefined
     });
+    container.style.height = '500px';
 
     // Set read-only background
     updateAceEditorBackground(editor);
@@ -4785,6 +4773,24 @@ function createReadOnlyCodeMirror(container, content, language) {
     return createReadOnlyAceEditor(container, content, language);
 }
 
+function _extractSseData(raw) {
+    // Extract and merge JSON objects from SSE data: lines
+    var lines = raw.split('\n');
+    var jsonObjects = [];
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.indexOf('data:') === 0) {
+            var payload = line.substring(5).trim();
+            try {
+                jsonObjects.push(JSON.parse(payload));
+            } catch (e) { /* skip non-JSON data lines */ }
+        }
+    }
+    if (jsonObjects.length === 0) return null;
+    if (jsonObjects.length === 1) return JSON.stringify(jsonObjects[0], null, 2);
+    return JSON.stringify(jsonObjects, null, 2);
+}
+
 function displayResponseInAceEditors(responseBodyContainer, responseHeadersContainer, data) {
     if (!data) return;
 
@@ -4798,6 +4804,21 @@ function displayResponseInAceEditors(responseBodyContainer, responseHeadersConta
             bodyLang = 'text';
         }
         createReadOnlyAceEditor(responseBodyContainer, bodyText, bodyLang);
+
+        // If SSE response, populate the Data tab with parsed JSON
+        var isSse = data.body && (data.body.indexOf('event:') !== -1 || /^data:/m.test(data.body));
+        if (isSse) {
+            var opId = responseBodyContainer.id.replace('respbody-', '');
+            var dataContainer = document.getElementById('respdata-' + opId);
+            var dataTab = document.getElementById('datatab-' + opId);
+            var extracted = _extractSseData(data.body);
+            if (extracted && dataContainer && dataTab) {
+                createReadOnlyAceEditor(dataContainer, extracted, 'json');
+                dataTab.style.display = '';
+                // Auto-switch to Data tab
+                switchResponseTab(opId, 'data');
+            }
+        }
     }
 
     // Display headers

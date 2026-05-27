@@ -7186,6 +7186,7 @@ details[open] .examples-toggle-icon {
 /* CodeMirror request editor container */
 .try-request-editor-cm {
     width: 100%;
+    border-radius: var(--radius-medium);
 }
 
 /* Ace Editor response containers */
@@ -7357,11 +7358,13 @@ details[open] .examples-toggle-icon {
 .try-response-body.active.ace_editor {
     border: 1px solid var(--color-neutral-5) !important;
     border-radius: var(--radius-medium);
+    margin-top: 0.2rem;
 }
 
 .try-response-headers.active.ace_editor {
     border: 1px solid var(--color-neutral-5) !important;
     border-radius: var(--radius-medium);
+    margin-top: 0.2rem;
 }
 
 .try-tab-btn {
