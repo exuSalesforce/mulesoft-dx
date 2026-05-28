@@ -2215,7 +2215,7 @@ function openAuthModal() {
     var modal = document.getElementById('authModal');
     if (!modal) return;
     modal.style.display = 'flex';
-    // Focus trap: focus the first focusable element
+    closeAuthDropdown();
     modal._previousFocus = document.activeElement;
     var firstFocusable = modal.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if (firstFocusable) firstFocusable.focus();
@@ -2373,6 +2373,7 @@ function setAuthStatus(authenticated, message, authMethod) {
         sessionStorage.setItem('anypoint_auth_method', authMethod);
     }
     if (!authenticated) {
+        sessionStorage.removeItem('anypoint_token');
         sessionStorage.removeItem('anypoint_auth_method');
         sessionStorage.removeItem('anypoint_identity');
         sessionStorage.removeItem('anypoint_token_expires_at');
@@ -2380,6 +2381,51 @@ function setAuthStatus(authenticated, message, authMethod) {
     }
 
     updateAuthSummary();
+}
+
+function logout() {
+    sessionStorage.removeItem('anypoint_token');
+    sessionStorage.removeItem('anypoint_auth_method');
+    sessionStorage.removeItem('anypoint_identity');
+    sessionStorage.removeItem('anypoint_token_expires_at');
+    stopTtlTimer();
+    var fields = ['authUsername', 'authPassword', 'authClientId', 'authClientSecret'];
+    fields.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    updateAuthSummary();
+    closeAuthDropdown();
+}
+
+function onAuthButtonClick() {
+    var token = sessionStorage.getItem('anypoint_token');
+    if (token && !isTokenExpired()) {
+        toggleAuthDropdown();
+    } else {
+        openAuthModal();
+    }
+}
+
+function toggleAuthDropdown() {
+    var menu = document.getElementById('authDropdownMenu');
+    if (!menu) return;
+    var isOpen = menu.style.display !== 'none';
+    _closeAllSkillDropdowns();
+    if (isOpen) {
+        closeAuthDropdown();
+    } else {
+        menu.style.display = 'block';
+        var btn = document.getElementById('authStatusButton');
+        if (btn) btn.setAttribute('aria-expanded', 'true');
+    }
+}
+
+function closeAuthDropdown() {
+    var menu = document.getElementById('authDropdownMenu');
+    if (menu) menu.style.display = 'none';
+    var btn = document.getElementById('authStatusButton');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
 function showAuthMessage(msg, isError) {
@@ -2398,6 +2444,8 @@ async function loginBearer() {
         showAuthMessage('Please enter username and password.', true);
         return;
     }
+    var loginBtn = document.querySelector('#authTabBearer .btn-auth-login');
+    if (loginBtn) { loginBtn.disabled = true; loginBtn.classList.add('loading'); }
     var serverBase = getSelectedBaseUrl();
     try {
         var resp = await fetch(PROXY_URL, {
@@ -2440,6 +2488,8 @@ async function loginBearer() {
         }
     } catch (e) {
         showAuthMessage('Unable to connect to the server. Please check your network connection and try again.', true);
+    } finally {
+        if (loginBtn) { loginBtn.disabled = false; loginBtn.classList.remove('loading'); }
     }
 }
 
@@ -2450,6 +2500,8 @@ async function loginOAuth2() {
         showAuthMessage('Please enter Client Id and Client Secret.', true);
         return;
     }
+    var loginBtn = document.querySelector('#authTabOauth2 .btn-auth-login');
+    if (loginBtn) { loginBtn.disabled = true; loginBtn.classList.add('loading'); }
     var serverBase = getSelectedBaseUrl();
     try {
         var resp = await fetch(PROXY_URL, {
@@ -2496,6 +2548,8 @@ async function loginOAuth2() {
         }
     } catch (e) {
         showAuthMessage('Unable to connect to the server. Please check your network connection and try again.', true);
+    } finally {
+        if (loginBtn) { loginBtn.disabled = false; loginBtn.classList.remove('loading'); }
     }
 }
 
@@ -3587,6 +3641,8 @@ function onServerChange() {
             if (customInput) customInput.style.display = 'none';
         }
     }
+    sessionStorage.setItem('anypoint_server_type', sel ? sel.value : 'us');
+    sessionStorage.setItem('anypoint_region', getSelectedRegion() || '');
     updateAuthSummary();
     updateAllServerCombos();
 }
@@ -3598,6 +3654,7 @@ function onRegionPresetChange() {
         customInput.style.display = preset.value === 'custom' ? 'block' : 'none';
         if (preset.value === 'custom') customInput.focus();
     }
+    sessionStorage.setItem('anypoint_region', getSelectedRegion() || '');
     updateAuthSummary();
     updateAllServerCombos();
 }
@@ -4308,10 +4365,13 @@ function _closeAllSkillDropdowns() {
     });
 }
 
-// Close skill dropdown on outside click
+// Close dropdowns on outside click
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.skill-split-btn')) {
         _closeAllSkillDropdowns();
+    }
+    if (!e.target.closest('.auth-button-wrapper')) {
+        closeAuthDropdown();
     }
 });
 
@@ -6598,9 +6658,43 @@ function canProceedToNextStep(skillSlug, currentStepIndex) {
         var customInput = document.getElementById('regionCustomInput');
         if (customInput) {
             customInput.addEventListener('input', function() {
+                sessionStorage.setItem('anypoint_region', customInput.value.trim());
                 updateAuthSummary();
                 updateAllServerCombos();
             });
+        }
+
+        // Restore server/region selection from sessionStorage
+        var storedServerType = sessionStorage.getItem('anypoint_server_type');
+        if (storedServerType) {
+            var serverSelect = document.getElementById('serverSelect');
+            if (serverSelect && serverSelect.value !== storedServerType) {
+                serverSelect.value = storedServerType;
+                var regionRow = document.getElementById('serverRegionRow');
+                var showRegion = storedServerType === 'eu' || storedServerType === 'platform';
+                if (regionRow) regionRow.style.display = showRegion ? 'flex' : 'none';
+                if (showRegion) {
+                    var defaultOpt = document.getElementById('regionDefaultOption');
+                    var preset = document.getElementById('regionPreset');
+                    if (defaultOpt && preset) {
+                        var isEu = storedServerType === 'eu';
+                        defaultOpt.value = isEu ? 'eu1' : 'ca1';
+                        defaultOpt.textContent = isEu ? 'Europe (eu1)' : 'Canada (ca1)';
+                    }
+                    var storedRegion = sessionStorage.getItem('anypoint_region');
+                    if (storedRegion && preset && defaultOpt) {
+                        if (storedRegion === defaultOpt.value) {
+                            preset.value = storedRegion;
+                        } else {
+                            preset.value = 'custom';
+                            if (customInput) {
+                                customInput.style.display = 'block';
+                                customInput.value = storedRegion;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Check for existing token

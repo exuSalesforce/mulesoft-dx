@@ -95,24 +95,32 @@
         </div>
         {% endif %}
         {% if not prose_only|default(false) %}
-        <button class="auth-panel-status" onclick="openAuthModal()" aria-label="Open authentication modal">
-            <span class="auth-status-container" id="authStatusContainer">
-                <img class="auth-status-dot" id="authStatusDot" src="{{ icons_path }}/status-dot-red.svg" alt="" aria-hidden="true">
-                <span class="auth-status-text" id="authStatusText">Not authenticated</span>
-                <img class="auth-lock-icon" id="authLockIcon" src="{{ icons_path }}/lock-red.svg" alt="" aria-hidden="true">
-            </span>
-            <span class="auth-info-container">
-                <span class="auth-user-section" id="authUserSection" style="display:none">
-                    <span class="auth-summary-label">User</span>
-                    <span class="auth-summary-value" id="authUserText">—</span>
+        <div class="auth-button-wrapper">
+            <button class="auth-panel-status" onclick="onAuthButtonClick()" aria-label="Authentication status" aria-haspopup="true" aria-expanded="false" id="authStatusButton">
+                <span class="auth-status-container" id="authStatusContainer">
+                    <img class="auth-status-dot" id="authStatusDot" src="{{ icons_path }}/status-dot-red.svg" alt="" aria-hidden="true">
+                    <span class="auth-status-text" id="authStatusText">Not authenticated</span>
+                    <img class="auth-lock-icon" id="authLockIcon" src="{{ icons_path }}/lock-red.svg" alt="" aria-hidden="true">
                 </span>
-                <span class="auth-info-separator" id="authInfoSeparator" style="display:none">|</span>
-                <span class="auth-region-section">
-                    <span class="auth-summary-label">Region</span>
-                    <span class="auth-summary-value" id="authRegionText">US</span>
+                <span class="auth-info-container">
+                    <span class="auth-user-section" id="authUserSection" style="display:none">
+                        <span class="auth-summary-label">User</span>
+                        <span class="auth-summary-value" id="authUserText">—</span>
+                    </span>
+                    <span class="auth-info-separator" id="authInfoSeparator" style="display:none">|</span>
+                    <span class="auth-region-section">
+                        <span class="auth-summary-label">Region</span>
+                        <span class="auth-summary-value" id="authRegionText">US</span>
+                    </span>
                 </span>
-            </span>
-        </button>
+            </button>
+            <div class="auth-dropdown-menu" id="authDropdownMenu" role="menu" style="display:none">
+                <button onclick="logout()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Log Out
+                </button>
+            </div>
+        </div>
         {% endif %}
     </div>
     {% endif %}
