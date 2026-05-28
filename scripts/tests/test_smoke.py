@@ -69,17 +69,18 @@ class TestGeneratedFiles:
         assert (generated_portal / 'apis' / 'test-api.html').exists()
 
     def test_css_exists(self, generated_portal):
-        css = generated_portal / 'assets' / 'styles.css'
-        assert css.exists()
-        assert css.stat().st_size > 0
+        css_files = list((generated_portal / 'assets').glob('styles.*.css'))
+        assert len(css_files) == 1
+        assert css_files[0].stat().st_size > 0
 
     def test_portal_js_exists(self, generated_portal):
-        js = generated_portal / 'assets' / 'portal.js'
-        assert js.exists()
-        assert js.stat().st_size > 0
+        js_files = list((generated_portal / 'assets').glob('portal.*.js'))
+        assert len(js_files) == 1
+        assert js_files[0].stat().st_size > 0
 
     def test_jsonpath_js_exists(self, generated_portal):
-        assert (generated_portal / 'assets' / 'jsonpath-plus.min.js').exists()
+        jp_files = list((generated_portal / 'assets').glob('jsonpath-plus.min.*.js'))
+        assert len(jp_files) == 1
 
 
 class TestHomepageStructure:
