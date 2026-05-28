@@ -1025,3 +1025,42 @@ class TestMaliciousTerraformSmokeRawHtml:
         for s in soup.find_all('script'):
             body = s.string or ''
             assert 'evil.example' not in body
+
+
+class TestCacheBustingIntegration:
+    """Verify generated HTML pages reference the correct hashed asset filenames."""
+
+    def test_homepage_references_hashed_css(self, generated_portal):
+        html = (generated_portal / 'index.html').read_text(encoding='utf-8')
+        css_files = list((generated_portal / 'assets').glob('styles.*.css'))
+        assert len(css_files) == 1
+        css_name = css_files[0].name
+        assert f'assets/{css_name}' in html
+
+    def test_homepage_references_hashed_js(self, generated_portal):
+        html = (generated_portal / 'index.html').read_text(encoding='utf-8')
+        js_files = list((generated_portal / 'assets').glob('portal.*.js'))
+        assert len(js_files) == 1
+        assert js_files[0].name in html
+
+    def test_detail_page_references_hashed_css(self, generated_portal):
+        detail_pages = list((generated_portal / 'apis').glob('*.html'))
+        assert len(detail_pages) > 0
+        html = detail_pages[0].read_text(encoding='utf-8')
+        css_files = list((generated_portal / 'assets').glob('styles.*.css'))
+        css_name = css_files[0].name
+        assert f'assets/{css_name}' in html
+
+    def test_detail_page_references_hashed_js(self, generated_portal):
+        detail_pages = list((generated_portal / 'apis').glob('*.html'))
+        assert len(detail_pages) > 0
+        html = detail_pages[0].read_text(encoding='utf-8')
+        js_files = list((generated_portal / 'assets').glob('portal.*.js'))
+        assert js_files[0].name in html
+
+    def test_no_unhashed_asset_references(self, generated_portal):
+        for html_file in generated_portal.rglob('*.html'):
+            content = html_file.read_text(encoding='utf-8')
+            assert 'assets/styles.css' not in content, f"{html_file} still references unhashed styles.css"
+            assert 'assets/portal.js' not in content, f"{html_file} still references unhashed portal.js"
+            assert 'assets/jsonpath-plus.min.js' not in content, f"{html_file} still references unhashed jsonpath-plus.min.js"
