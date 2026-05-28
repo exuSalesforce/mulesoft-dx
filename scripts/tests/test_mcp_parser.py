@@ -195,7 +195,7 @@ class TestParseMcp:
         data = parse_mcp(mcp_dir)
         assert data['tool_count'] == 2
         tools_by_name = {t['name']: t for t in data['tools']}
-        assert tools_by_name['searchAssets']['_display_name'] == 'searchAssets'
+        assert tools_by_name['searchAssets']['_display_name'] == 'Search Assets'
         # title takes precedence
         assert tools_by_name['getProfile']['_display_name'] == 'User Profile'
 

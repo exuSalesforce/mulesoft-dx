@@ -9,8 +9,8 @@ from bs4 import BeautifulSoup
 from portal_generator import PortalGenerator
 from tests.conftest import (
     MINIMAL_OAS_YAML, MINIMAL_EXCHANGE_JSON, MINIMAL_SKILL_MD,
-    PRIVATE_EXCHANGE_JSON, PROSE_ONLY_SKILL_MD, NESTED_SKILL_MD,
-    NON_API_STEPS_SKILL_MD, setup_schema_docs,
+    PRIVATE_EXCHANGE_JSON, PRIVATE_API_SKILL_MD, PROSE_ONLY_SKILL_MD,
+    NESTED_SKILL_MD, NON_API_STEPS_SKILL_MD, setup_schema_docs,
     MINIMAL_MCP_SERVER_JSON, MINIMAL_MCP_YAML, MINIMAL_MCP_EXCHANGE_JSON,
     MINIMAL_TERRAFORM_MD,
 )
@@ -103,6 +103,20 @@ class TestHomepageStructure:
     def test_links_to_detail_page(self):
         link = self.soup.find('a', href=lambda h: h and 'test-api' in h)
         assert link is not None
+
+    def test_has_sort_indicator(self):
+        indicator = self.soup.find(id='sortIndicator')
+        assert indicator is not None
+        assert indicator.get('style') == 'display: none;'
+        label = indicator.find(id='sortLabel')
+        assert label is not None
+
+    def test_sort_options_use_count_not_endpoints(self):
+        sort_select = self.soup.find(id='sortBy')
+        assert sort_select is not None
+        options = [opt.get('value') for opt in sort_select.find_all('option')]
+        assert 'count' in options
+        assert 'endpoints' not in options
 
 
 class TestDetailPageStructure:
@@ -416,7 +430,7 @@ class TestHomepageAgentLinks:
     def test_has_llms_txt_head_link(self):
         link = self.soup.find('link', attrs={'href': lambda v: v and 'llms.txt' in v})
         assert link is not None
-        assert link.get('type') == 'text/plain'
+        assert link.get('rel') == ['llms-txt']
 
     def test_has_registry_json_head_link(self):
         link = self.soup.find('link', attrs={'href': lambda v: v and 'registry.json' in v})
@@ -550,6 +564,56 @@ class TestPrivateApiExclusion:
         assert (portal_with_private_api / 'apis' / 'private-api' / 'api.yaml').exists()
 
 
+class TestPrivateApiNotInRelatedApis:
+    """Verify private APIs do not appear in skill Related APIs sidebar."""
+
+    @pytest.fixture
+    def portal_with_skill_referencing_private(self, tmp_path):
+        repo = tmp_path / 'repo'
+        repo.mkdir()
+        apis_dir = repo / 'apis'
+        apis_dir.mkdir()
+
+        # Public API
+        public_dir = apis_dir / 'public-api'
+        public_dir.mkdir()
+        (public_dir / 'api.yaml').write_text(MINIMAL_OAS_YAML)
+        (public_dir / 'exchange.json').write_text(MINIMAL_EXCHANGE_JSON)
+
+        # Private API
+        private_dir = apis_dir / 'private-api'
+        private_dir.mkdir()
+        (private_dir / 'api.yaml').write_text(MINIMAL_OAS_YAML)
+        (private_dir / 'exchange.json').write_text(PRIVATE_EXCHANGE_JSON)
+
+        # Skill referencing both
+        skills_dir = repo / 'skills' / 'mixed-api-skill'
+        skills_dir.mkdir(parents=True)
+        (skills_dir / 'SKILL.md').write_text(PRIVATE_API_SKILL_MD)
+
+        setup_schema_docs(repo)
+
+        output = tmp_path / 'output'
+        generator = PortalGenerator(output)
+        generator.generate(repo)
+        return output
+
+    def test_private_api_not_in_skill_sidebar(self, portal_with_skill_referencing_private):
+        html = (portal_with_skill_referencing_private / 'skills' / 'mixed-api-skill.html').read_text(encoding='utf-8')
+        soup = BeautifulSoup(html, 'html.parser')
+        apis_panel = soup.find(id='apis-panel')
+        assert apis_panel is not None
+        links = apis_panel.find_all('a')
+        link_hrefs = [a.get('href', '') for a in links]
+        assert any('public-api' in h for h in link_hrefs)
+        assert not any('private-api' in h for h in link_hrefs)
+
+    def test_private_api_not_in_skill_markdown_apis_section(self, portal_with_skill_referencing_private):
+        md = (portal_with_skill_referencing_private / 'skills' / 'mixed-api-skill.md').read_text(encoding='utf-8')
+        assert '[public-api]' in md
+        assert '[private-api]' not in md
+
+
 class TestRefSubdirectoriesCopied:
     """Verify that subdirectories (schemas, examples, requests) next to api.yaml
     are copied to the portal output so that $ref links resolve correctly."""
@@ -637,7 +701,7 @@ class TestMcpDetailPage:
         assert len(mcp_entries) == 1
         entry = mcp_entries[0]
         assert entry['$id'] == 'urn:mcp:test-mcp'
-        assert entry['href'] == 'mcps/test-mcp/mcp.yaml'
+        assert entry['href'] == 'mcps/test-mcp/server.json'
         assert entry['docs'] == 'mcps/test-mcp.html'
         assert entry['tool_count'] == 1
 
@@ -837,3 +901,126 @@ class TestTerraformPageGeneration:
         scripts = terraform_soup.find_all('script')
         text = ' '.join(s.string or '' for s in scripts)
         assert 'wrapTerraformCodeBlocks()' in text
+
+
+SECURITY_FIXTURES = Path(__file__).parent / 'fixtures' / 'security'
+
+
+def _copy_fixture_dir(src: Path, dst: Path):
+    """Copy each file from src into dst (which is created)."""
+    dst.mkdir(parents=True, exist_ok=True)
+    for entry in src.iterdir():
+        if entry.is_file():
+            (dst / entry.name).write_bytes(entry.read_bytes())
+
+
+class TestMaliciousSpecSmokeXSS:
+    """E2E: a malicious OpenAPI spec must not produce executable XSS in the rendered page."""
+
+    @pytest.fixture
+    def portal_with_malicious_spec(self, tmp_path):
+        repo = tmp_path / 'repo'
+        repo.mkdir()
+        api_dir = repo / 'apis' / 'malicious-test'
+        _copy_fixture_dir(SECURITY_FIXTURES / 'malicious_spec', api_dir)
+        setup_schema_docs(repo)
+
+        output = tmp_path / 'output'
+        PortalGenerator(output).generate(repo)
+        return output
+
+    @pytest.fixture
+    def detail_html(self, portal_with_malicious_spec):
+        return (portal_with_malicious_spec / 'apis' / 'malicious-test.html').read_text(encoding='utf-8')
+
+    def test_no_javascript_href(self, detail_html):
+        soup = BeautifulSoup(detail_html, 'html.parser')
+        for a in soup.find_all('a'):
+            href = (a.get('href') or '').strip().lower()
+            assert not href.startswith('javascript:'), f'unsafe href: {href!r}'
+
+    def test_no_unescaped_script_breakout_in_inline_scripts(self, detail_html):
+        """Inline <script> bodies must not contain a literal </script> sequence
+        that would close the tag and let attacker-supplied content execute."""
+        soup = BeautifulSoup(detail_html, 'html.parser')
+        for s in soup.find_all('script'):
+            body = s.string or ''
+            assert '</script>' not in body
+
+    def test_no_onerror_image_payload(self, detail_html):
+        """No <img> tag with an onerror handler should be present in the DOM."""
+        soup = BeautifulSoup(detail_html, 'html.parser')
+        for img in soup.find_all('img'):
+            assert not img.has_attr('onerror'), 'img onerror attribute present'
+
+
+class TestMaliciousMcpSmokeXSS:
+    """E2E: a malicious MCP descriptor must not produce executable XSS in the rendered page."""
+
+    @pytest.fixture
+    def portal_with_malicious_mcp(self, tmp_path):
+        repo = tmp_path / 'repo'
+        repo.mkdir()
+        # Discovery short-circuits if apis/ is missing, so create an empty one.
+        (repo / 'apis').mkdir()
+        mcp_dir = repo / 'mcps' / 'malicious-test'
+        _copy_fixture_dir(SECURITY_FIXTURES / 'malicious_mcp', mcp_dir)
+        setup_schema_docs(repo)
+
+        output = tmp_path / 'output'
+        PortalGenerator(output).generate(repo)
+        return output
+
+    @pytest.fixture
+    def mcp_html(self, portal_with_malicious_mcp):
+        return (portal_with_malicious_mcp / 'mcps' / 'malicious-test.html').read_text(encoding='utf-8')
+
+    def test_no_onerror_image_payload(self, mcp_html):
+        """The malicious onerror payload must not become a real img element."""
+        soup = BeautifulSoup(mcp_html, 'html.parser')
+        for img in soup.find_all('img'):
+            assert not img.has_attr('onerror')
+
+    def test_no_inline_script_breakout(self, mcp_html):
+        """Inline <script> bodies must not contain a literal </script>
+        sequence that would close the tag and let attacker-supplied content
+        execute (covers the JSON-encoded fixture payloads)."""
+        soup = BeautifulSoup(mcp_html, 'html.parser')
+        for s in soup.find_all('script'):
+            body = s.string or ''
+            assert '</script>' not in body
+
+
+class TestMaliciousTerraformSmokeRawHtml:
+    """E2E: terraform docs with raw HTML must have it stripped (html: False)."""
+
+    @pytest.fixture
+    def portal_with_malicious_terraform(self, tmp_path):
+        repo = tmp_path / 'repo'
+        repo.mkdir()
+        (repo / 'apis').mkdir()
+        provider_dir = repo / 'terraform' / 'anypoint-provider'
+        resources_dir = provider_dir / 'resources'
+        resources_dir.mkdir(parents=True)
+        (resources_dir / 'dangerous.md').write_bytes(
+            (SECURITY_FIXTURES / 'malicious_terraform' / 'dangerous.md').read_bytes()
+        )
+        setup_schema_docs(repo)
+
+        output = tmp_path / 'output'
+        PortalGenerator(output).generate(repo)
+        return output
+
+    @pytest.fixture
+    def terraform_html(self, portal_with_malicious_terraform):
+        return (portal_with_malicious_terraform / 'terraform' / 'anypoint-provider.html').read_text(encoding='utf-8')
+
+    def test_no_iframe_tags(self, terraform_html):
+        soup = BeautifulSoup(terraform_html, 'html.parser')
+        assert soup.find('iframe') is None
+
+    def test_no_inline_script_with_evil_payload(self, terraform_html):
+        soup = BeautifulSoup(terraform_html, 'html.parser')
+        for s in soup.find_all('script'):
+            body = s.string or ''
+            assert 'evil.example' not in body

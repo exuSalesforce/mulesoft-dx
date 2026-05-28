@@ -8,11 +8,14 @@ contain:
                       https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
                       (name, title, description, version, remotes, ...).
                       Authoritative for display fields and endpoint URLs.
+                      When ``_meta`` contains a key ending with ``/catalog``,
+                      that catalog object supplies tools, resources,
+                      resourceTemplates, and prompts (overriding mcp.yaml).
 * ``exchange.json`` — Exchange publishing metadata. Supplies the ``tags`` list
                       surfaced on the homepage tag search.
 * ``mcp.yaml``      — Tool / prompt / resource definitions (capabilities,
                       tools, prompts, resources, resourceTemplates, ...).
-                      Structural parts not covered by the registry schema.
+                      Used only when server.json does not carry a catalog.
 """
 
 import json
@@ -40,6 +43,17 @@ _TRANSPORT_ALIASES = {
 }
 
 
+def _extract_catalog(server_data: Dict) -> Optional[Dict]:
+    """Return the catalog object from ``_meta`` if a key ending with ``/catalog`` exists."""
+    meta = server_data.get('_meta')
+    if not isinstance(meta, dict):
+        return None
+    for key, value in meta.items():
+        if isinstance(key, str) and key.endswith('/catalog') and isinstance(value, dict):
+            return value
+    return None
+
+
 def _normalize_remote(entry: Dict) -> Dict:
     """Convert a server.json ``remotes[]`` entry into the portal's server shape.
 
@@ -57,10 +71,20 @@ def _normalize_remote(entry: Dict) -> Dict:
 
 
 def _normalize_remotes(raw: Any) -> List[Dict]:
-    """Normalize the server.json ``remotes`` array into our server list."""
+    """Normalize the server.json ``remotes`` array into our server list.
+
+    Only remotes whose type normalizes to ``streamableHttp`` are included.
+    """
     if not isinstance(raw, list):
         return []
-    return [_normalize_remote(entry) for entry in raw if isinstance(entry, dict)]
+    results = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        normalized = _normalize_remote(entry)
+        if normalized['_transport_kind'] == 'streamableHttp':
+            results.append(normalized)
+    return results
 
 
 def _ensure_list(value: Any) -> List[Dict]:
@@ -291,14 +315,36 @@ def _schema_to_properties(schema: Dict) -> List[Dict]:
     return result
 
 
+def _titleize_name(value: str) -> str:
+    """Convert a snake_case or camelCase name to Title Case.
+
+    Handles both ``snake_case`` (split on underscores) and ``camelCase``
+    (split on case transitions).
+    """
+    if not value:
+        return ''
+    if '_' in value:
+        return ' '.join(word.capitalize() for word in value.split('_') if word)
+    result = []
+    for i, char in enumerate(value):
+        if i > 0 and char.isupper():
+            prev_char = value[i - 1]
+            next_char = value[i + 1] if i + 1 < len(value) else None
+            if prev_char.islower() or (prev_char.isupper() and next_char and next_char.islower()):
+                result.append(' ')
+        result.append(char)
+    spaced = ''.join(result)
+    return spaced[0].upper() + spaced[1:] if spaced else ''
+
+
 def _tool_display_name(tool: Dict) -> str:
-    """MCP display-name precedence for tools: title > annotations.title > name."""
+    """MCP display-name precedence for tools: title > annotations.title > titleized name."""
     if tool.get('title'):
         return str(tool['title'])
     annotations = tool.get('annotations') or {}
     if isinstance(annotations, dict) and annotations.get('title'):
         return str(annotations['title'])
-    return str(tool.get('name', ''))
+    return _titleize_name(str(tool.get('name', '')))
 
 
 def _uri_authority(uri: str) -> str:
@@ -318,12 +364,13 @@ def _uri_authority(uri: str) -> str:
 
 
 def _extract_tool_ui_resource(tool: Dict) -> str:
-    """Pull the ui/resourceUri hint out of a tool's ``_meta`` block.
+    """Pull the ui/resourceUri hint out of a tool's ``_meta`` or ``meta`` block.
 
     Accepts both the flat ``ui/resourceUri`` key and the nested
-    ``ui: { resourceUri: ... }`` shape for tolerance.
+    ``ui: { resourceUri: ... }`` shape for tolerance.  Checks ``_meta`` first
+    (mcp.yaml convention), then ``meta`` (server.json catalog convention).
     """
-    meta = tool.get('_meta')
+    meta = tool.get('_meta') or tool.get('meta')
     if not isinstance(meta, dict):
         return ''
     flat = meta.get('ui/resourceUri')
@@ -446,19 +493,16 @@ def _build_ide_configs(slug: str, mcp_type: str, transport: Dict, servers: List[
 def parse_mcp(mcp_dir: Path) -> Optional[Dict]:
     """Parse an MCP server directory into a normalized record.
 
-    Requires ``mcp.yaml`` (tool/prompt/resource definitions).
-    ``server.json`` (MCP registry descriptor) is optional — when absent the
-    MCP is treated as a **local** (stdio) server and display fields fall back
-    to ``exchange.json`` and the directory slug.  ``exchange.json`` is also
-    optional and contributes the ``tags`` list used by the homepage tag search.
-    """
-    mcp_yaml_path = mcp_dir / 'mcp.yaml'
-    if not mcp_yaml_path.exists():
-        return None
-    mcp_data = _load_yaml(mcp_yaml_path)
-    if mcp_data is None:
-        return None
+    When ``server.json`` contains a ``_meta`` key ending with ``/catalog``,
+    everything is taken from ``server.json`` (tools, resources, prompts,
+    remotes).  ``mcp.yaml`` is not expected to exist in this case.
 
+    When there is no catalog, ``mcp.yaml`` is required and provides only
+    tools and resources.  All other metadata still comes from ``server.json``.
+
+    ``exchange.json`` is optional and contributes the ``tags`` list used by
+    the homepage tag search.
+    """
     server_json_path = mcp_dir / 'server.json'
     server_data: Dict = {}
     if server_json_path.exists():
@@ -468,6 +512,18 @@ def parse_mcp(mcp_dir: Path) -> Optional[Dict]:
             server_data = {}
         if not isinstance(server_data, dict):
             server_data = {}
+
+    catalog = _extract_catalog(server_data)
+
+    if catalog is not None:
+        mcp_data = catalog
+    else:
+        mcp_yaml_path = mcp_dir / 'mcp.yaml'
+        if not mcp_yaml_path.exists():
+            return None
+        mcp_data = _load_yaml(mcp_yaml_path)
+        if not mcp_data:
+            return None
 
     exchange_path = mcp_dir / 'exchange.json'
     exchange: Dict = {}
@@ -515,36 +571,16 @@ def parse_mcp(mcp_dir: Path) -> Optional[Dict]:
                 tags.append({'name': entry.strip(), 'description': ''})
                 tag_names.append(entry.strip())
 
-    # Servers + transport derive from server.json remotes[] (if present).
+    # Servers derive from server.json remotes[] (only streamableHttp).
     servers = _normalize_remotes(server_data.get('remotes'))
-    primary_remote = next(
-        (s for s in servers if s.get('_transport_kind') == 'streamableHttp'),
-        servers[0] if servers else None,
-    )
 
-    # Transport: prefer server.json remotes; fall back to mcp.yaml transport.
-    yaml_transport = mcp_data.get('transport') or {}
-    yaml_transport_kind = _TRANSPORT_ALIASES.get(
-        str(yaml_transport.get('kind', '')),
-        str(yaml_transport.get('kind', '')),
-    )
-    transport_kind = (
-        str(primary_remote.get('_transport_kind', ''))
-        if primary_remote
-        else yaml_transport_kind
-    )
+    # mcp_type: "remote" when streamableHttp servers exist, else "local".
+    mcp_type = 'remote' if servers else 'local'
+    is_local = mcp_type == 'local'
     transport = {
-        'kind': transport_kind,
-        'path': str(yaml_transport.get('path', '')),
-        'sse_path': '',
-        'messages_path': '',
-        'instructions': '',
-        'command': str(yaml_transport.get('command', '')),
+        'kind': 'streamableHttp' if servers else 'stdio',
+        'command': str((mcp_data.get('transport') or {}).get('command', '')),
     }
-
-    # mcp_type: "local" when transport is stdio (no HTTP remotes), else "remote".
-    is_local = transport_kind == 'stdio'
-    mcp_type = 'local' if is_local else 'remote'
 
     # Install info from exchange.json.
     raw_install = exchange.get('install') if isinstance(exchange, dict) else None

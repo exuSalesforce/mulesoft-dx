@@ -27,15 +27,7 @@
     {% if mcp.install and mcp.install.command %}
     <div class="overview-section">
         <h3>Installation</h3>
-        <div class="mcp-install-block">
-            <pre class="mcp-install-command"><code>{{ mcp.install.command }}</code></pre>
-            <button class="btn-copy-install" onclick="copyToClipboard('{{ mcp.install.command }}', this)" aria-label="Copy install command">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-            </button>
-        </div>
+        <pre class="mcp-install-command"><code class="language-bash">{{ mcp.install.command }}</code></pre>
         {% if mcp.install.docs_url %}
         <p class="mcp-install-docs">For setup and configuration details, see the <a href="{{ mcp.install.docs_url }}" target="_blank" rel="noopener">Getting Started guide</a>.</p>
         {% endif %}
@@ -57,30 +49,6 @@
             <div class="mcp-info-row">
                 <dt>Command</dt>
                 <dd><code>{{ mcp.transport.command }}</code></dd>
-            </div>
-            {% elif mcp.transport.kind == 'streamableHttp' and mcp.transport.path %}
-            <div class="mcp-info-row">
-                <dt>Path</dt>
-                <dd><code>{{ mcp.transport.path }}</code></dd>
-            </div>
-            {% elif mcp.transport.kind == 'sse' %}
-                {% if mcp.transport.sse_path %}
-                <div class="mcp-info-row">
-                    <dt>SSE Path</dt>
-                    <dd><code>{{ mcp.transport.sse_path }}</code></dd>
-                </div>
-                {% endif %}
-                {% if mcp.transport.messages_path %}
-                <div class="mcp-info-row">
-                    <dt>Messages Path</dt>
-                    <dd><code>{{ mcp.transport.messages_path }}</code></dd>
-                </div>
-                {% endif %}
-            {% endif %}
-            {% if mcp.transport.instructions %}
-            <div class="mcp-info-row">
-                <dt>Instructions</dt>
-                <dd>{{ mcp.transport.instructions }}</dd>
             </div>
             {% endif %}
         </dl>
@@ -119,13 +87,13 @@
                     {% if cap_value is mapping %}
                         {% set flags = [] %}
                         {% for flag_key, flag_val in cap_value.items() %}
-                            {% if flag_val is sameas true %}{% set _ = flags.append('<span class="badge badge-security">' ~ flag_key ~ '</span>') %}
-                            {% elif flag_val is sameas false %}{% set _ = flags.append('<span class="badge badge-mcp-flag-off">' ~ flag_key ~ ': off</span>') %}
-                            {% elif flag_val is mapping %}{% set _ = flags.append('<span class="badge badge-security">' ~ flag_key ~ '</span>') %}
-                            {% else %}{% set _ = flags.append('<span class="badge badge-security">' ~ flag_key ~ ': ' ~ flag_val ~ '</span>') %}
+                            {% if flag_val is sameas true %}{% set _ = flags.append({'cls': 'badge badge-security', 'text': flag_key}) %}
+                            {% elif flag_val is sameas false %}{% set _ = flags.append({'cls': 'badge badge-mcp-flag-off', 'text': flag_key ~ ': off'}) %}
+                            {% elif flag_val is mapping %}{% set _ = flags.append({'cls': 'badge badge-security', 'text': flag_key}) %}
+                            {% else %}{% set _ = flags.append({'cls': 'badge badge-security', 'text': flag_key ~ ': ' ~ flag_val}) %}
                             {% endif %}
                         {% endfor %}
-                        {% if flags %}{{ flags|join(' ')|safe }}{% else %}<em class="mcp-capability-enabled">enabled</em>{% endif %}
+                        {% if flags %}{% for f in flags %}<span class="{{ f.cls }}">{{ f.text }}</span>{% if not loop.last %} {% endif %}{% endfor %}{% else %}<em class="mcp-capability-enabled">enabled</em>{% endif %}
                     {% elif cap_value is sameas true %}
                         <em class="mcp-capability-enabled">enabled</em>
                     {% else %}

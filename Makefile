@@ -127,45 +127,60 @@ validate-all: $(REPORT_DIR)
 # Validate all APIs with governance rules
 validate-all-governed: $(REPORT_DIR)
 	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(CYAN)  Validating All APIs - With Governance Rules$(NC)"
+	@echo "$(CYAN)  Validating All APIs - With Governance Rules (parallel)$(NC)"
 	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
 	@echo ""
 	@if [ ! -f $(RULESET) ]; then \
 		echo "$(RED)Error: Ruleset not found at $(RULESET)$(NC)"; \
 		exit 1; \
 	fi; \
-	passed=0; failed=0; skipped=0; \
+	results_dir=$$(mktemp -d); \
+	pids=""; \
 	for api in $(API_DIRS); do \
 		api_name=$$(basename $$api); \
 		skip=false; \
 		for s in $(SKIP_GOVERNED); do [ "$$api_name" = "$$s" ] && skip=true; done; \
 		if $$skip; then \
-			echo "$(YELLOW)Skipping:$(NC) $$api (in SKIP_GOVERNED list)"; \
-			skipped=$$((skipped + 1)); \
-			echo ""; \
+			echo "skipped" > "$$results_dir/$$api_name.status"; \
 			continue; \
 		fi; \
-		echo "$(BLUE)Validating:$(NC) $$api"; \
-		report=$(REPORT_DIR)/$$api_name-governed-$(TIMESTAMP).txt; \
-		if $(ANYPOINT_CLI) api-project validate --location=./$$api --local-ruleset=$(RULESET) > "$$report" 2>&1; then \
-			violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
-			warnings=$$(grep -c "Severity:.*Warning" "$$report" 2>/dev/null || true); \
-			if [ "$$violations" -gt 0 ] 2>/dev/null; then \
-				echo "  $(RED)✗ FAILED$(NC) - Violations: $$violations, Warnings: $$warnings"; \
-				failed=$$((failed + 1)); \
+		( \
+			report=$(REPORT_DIR)/$$api_name-governed-$(TIMESTAMP).txt; \
+			if $(ANYPOINT_CLI) api-project validate --location=./$$api --local-ruleset=$(RULESET) > "$$report" 2>&1; then \
+				violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
+				if [ "$$violations" -gt 0 ] 2>/dev/null; then \
+					echo "failed" > "$$results_dir/$$api_name.status"; \
+				else \
+					echo "passed" > "$$results_dir/$$api_name.status"; \
+				fi; \
 			else \
-				echo "  $(GREEN)✓ PASSED$(NC) - Violations: 0, Warnings: $$warnings"; \
-				passed=$$((passed + 1)); \
+				echo "failed" > "$$results_dir/$$api_name.status"; \
 			fi; \
+			cp "$$report" "$$results_dir/$$api_name.report" 2>/dev/null || true; \
+		) & \
+		pids="$$pids $$!"; \
+	done; \
+	for pid in $$pids; do wait $$pid; done; \
+	passed=0; failed=0; skipped=0; \
+	for api in $(API_DIRS); do \
+		api_name=$$(basename $$api); \
+		status=$$(cat "$$results_dir/$$api_name.status" 2>/dev/null || echo "failed"); \
+		report="$$results_dir/$$api_name.report"; \
+		violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
+		warnings=$$(grep -c "Severity:.*Warning" "$$report" 2>/dev/null || true); \
+		if [ "$$status" = "skipped" ]; then \
+			echo "$(YELLOW)Skipping:$(NC) $$api (in SKIP_GOVERNED list)"; \
+			skipped=$$((skipped + 1)); \
+		elif [ "$$status" = "passed" ]; then \
+			echo "$(GREEN)✓ PASSED$(NC) $$api - Violations: 0, Warnings: $$warnings"; \
+			passed=$$((passed + 1)); \
 		else \
-			violations=$$(grep -c "Severity:.*Violation" "$$report" 2>/dev/null || true); \
-			warnings=$$(grep -c "Severity:.*Warning" "$$report" 2>/dev/null || true); \
-			echo "  $(RED)✗ FAILED$(NC) - Violations: $$violations, Warnings: $$warnings"; \
-			head -1 "$$report" 2>/dev/null | grep -v "^$$" | while read line; do echo "    $$line"; done; \
+			echo "$(RED)✗ FAILED$(NC) $$api - Violations: $$violations, Warnings: $$warnings"; \
 			failed=$$((failed + 1)); \
 		fi; \
-		echo ""; \
 	done; \
+	rm -rf "$$results_dir"; \
+	echo ""; \
 	echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"; \
 	echo "$(GREEN)Results:$(NC) $$passed passed, $(RED)$$failed failed$(NC), $(YELLOW)$$skipped skipped$(NC) ($(words $(API_DIRS)) total)"; \
 	echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"; \
@@ -305,7 +320,7 @@ serve-portal:
 	echo "$(GREEN)✓ Portal is being served at http://localhost:$$PORT_VAL$(NC)"; \
 	echo "$(BLUE)Press Ctrl+C to stop the server$(NC)"; \
 	echo ""; \
-	python3 -m http.server $$PORT_VAL --directory portal
+	python3 -m http.server $$PORT_VAL  --directory portal
 
 # Start CORS proxy server
 # Usage: make serve-proxy [PROXY_PORT=8080]
@@ -321,13 +336,8 @@ serve-proxy:
 	echo ""; \
 	python3 scripts/proxy_server.py --port $$PROXY_PORT_VAL
 
-# FTP deployment settings
-FTP_HOST := 564243.ftp.upload.akamai.com
-FTP_TEST_PATH := /564243/api-portal.mulesoft.com/test
-FTP_PROD_PATH := /564243/api-portal.mulesoft.com/prod
-
 # Deploy portal to test environment via FTP
-# Requires: AKAMAI_FTP_USER and AKAMAI_FTP_PASSWORD environment variables
+# Requires: AKAMAI_HOST, AKAMAI_USER, AKAMAI_PASS, AKAMAI_BASE_PATH environment variables
 deploy-test:
 	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
 	@echo "$(CYAN)  Deploying Portal to TEST$(NC)"
@@ -337,17 +347,17 @@ deploy-test:
 		echo "$(RED)Error: portal/ directory not found. Run 'make generate-portal' first.$(NC)"; \
 		exit 1; \
 	fi
-	@if [ -z "$$AKAMAI_FTP_USER" ] || [ -z "$$AKAMAI_FTP_PASSWORD" ]; then \
-		echo "$(RED)Error: AKAMAI_FTP_USER and AKAMAI_FTP_PASSWORD env vars are required.$(NC)"; \
+	@if [ -z "$$AKAMAI_HOST" ] || [ -z "$$AKAMAI_USER" ] || [ -z "$$AKAMAI_PASS" ] || [ -z "$$AKAMAI_BASE_PATH" ]; then \
+		echo "$(RED)Error: AKAMAI_HOST, AKAMAI_USER, AKAMAI_PASS, and AKAMAI_BASE_PATH env vars are required.$(NC)"; \
 		exit 1; \
 	fi
-	@echo "$(YELLOW)Uploading to $(FTP_HOST):$(FTP_TEST_PATH)$(NC)"
-	@lftp -e "mirror --reverse --delete --verbose portal/ $(FTP_TEST_PATH); bye" -u $$AKAMAI_FTP_USER,$$AKAMAI_FTP_PASSWORD $(FTP_HOST)
+	@echo "$(YELLOW)Uploading to test environment$(NC)"
+	@lftp -e "mirror --reverse --delete --verbose portal/ $$AKAMAI_BASE_PATH/test; bye" -u $$AKAMAI_USER,$$AKAMAI_PASS $$AKAMAI_HOST
 	@echo ""
 	@echo "$(GREEN)✓ Deployed to test environment$(NC)"
 
 # Deploy portal to production via FTP
-# Requires: AKAMAI_FTP_USER and AKAMAI_FTP_PASSWORD environment variables
+# Requires: AKAMAI_HOST, AKAMAI_USER, AKAMAI_PASS, AKAMAI_BASE_PATH environment variables
 deploy-prod:
 	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
 	@echo "$(CYAN)  Deploying Portal to PRODUCTION$(NC)"
@@ -357,14 +367,14 @@ deploy-prod:
 		echo "$(RED)Error: portal/ directory not found. Run 'make generate-portal' first.$(NC)"; \
 		exit 1; \
 	fi
-	@if [ -z "$$AKAMAI_FTP_USER" ] || [ -z "$$AKAMAI_FTP_PASSWORD" ]; then \
-		echo "$(RED)Error: AKAMAI_FTP_USER and AKAMAI_FTP_PASSWORD env vars are required.$(NC)"; \
+	@if [ -z "$$AKAMAI_HOST" ] || [ -z "$$AKAMAI_USER" ] || [ -z "$$AKAMAI_PASS" ] || [ -z "$$AKAMAI_BASE_PATH" ]; then \
+		echo "$(RED)Error: AKAMAI_HOST, AKAMAI_USER, AKAMAI_PASS, and AKAMAI_BASE_PATH env vars are required.$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(RED)⚠  WARNING: You are about to deploy to PRODUCTION$(NC)"
 	@echo -n "$(YELLOW)Are you sure? [y/N] $(NC)" && read ans && [ "$$ans" = "y" ] || (echo "$(RED)Aborted.$(NC)"; exit 1)
-	@echo "$(YELLOW)Uploading to $(FTP_HOST):$(FTP_PROD_PATH)$(NC)"
-	@lftp -e "mirror --reverse --delete --verbose portal/ $(FTP_PROD_PATH); bye" -u $$AKAMAI_FTP_USER,$$AKAMAI_FTP_PASSWORD $(FTP_HOST)
+	@echo "$(YELLOW)Uploading to production environment$(NC)"
+	@lftp -e "mirror --reverse --delete --verbose portal/ $$AKAMAI_BASE_PATH/prod; bye" -u $$AKAMAI_USER,$$AKAMAI_PASS $$AKAMAI_HOST
 	@echo ""
 	@echo "$(GREEN)✓ Deployed to production$(NC)"
 
