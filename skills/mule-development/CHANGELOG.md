@@ -4,6 +4,15 @@ All notable changes to `@salesforce/mulesoft-vibes-skills` are documented in thi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-06-01
+
+### Changed
+
+- **`build-mule-integration`** — wired to invoke the `generate-connectivity-knowledge` skill on the HTTP-fallback path so HTTP-Connector flows inherit the auth, pagination, and entity awareness a dedicated connector would carry.
+  - "No HTTP fallback without evidence" discipline rule now directs the agent to Step 3a instead of silently dropping to bare HTTP when the Exchange search returns no plausible connector.
+  - New **Step 3a: Generate Connectivity Knowledge for HTTP-Fallback Systems** — invokes `generate-connectivity-knowledge` per HTTP-fallback system (`apiName`, extracted use cases, `connectivity-schema/<system>/` output folder), producing `api-reference.md` + `<system>.yaml` + `config.properties`. The `## Step 3a:` header is intentionally non-sequential so it is not counted by the JTBD step-numbering validator.
+  - Phase-2 consumption clauses added so the generated folder is read the same way connector metadata is: Step 4 skips `describe-connector` for HTTP-fallback systems, Step 5's trigger ladder skips Rung 1 (no connector sources), Step 6 reads auth from the `api-reference.md` Authentication section, Step 7's TDD gains an HTTP-fallback systems block for explicit user approval, and Steps 11/13 build `<http:request-config>` + `<http:request>` from the generated reference. `mule-http-connector` is auto-added to the build when any system is HTTP-fallback.
+
 ## [1.0.5] - 2026-05-27
 
 ### Added

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Requires Anypoint CLI v4 with the `@salesforce/anypoint-cli-dx-mule-plugin` DX plugin, Java 11+, Maven 3.6+, Mule Runtime (for `dx mule describe-connector` metadata commands)
 metadata:
   author: mule-dx-tooling
-  version: "1.1.0"
+  version: "1.1.1"
   cli: anypoint-cli-v4
   theme: professional
 allowed-tools: Bash Read Write Edit AskUserQuestion
@@ -90,7 +90,7 @@ Phase 2 MUST NOT start until Step 7's approval gate has been passed explicitly. 
 - **"Completion" means the build already passed.** You may only declare completion after a response that ran `mvn clean package` came back with `BUILD SUCCESS`.
 - **Connector versions come ONLY from the Step 3 flow.** Never paste a version from `references/connector-catalog.md`, from training-time memory, or from extrapolation. Step 3 is a three-script dance: `get_latest_connector.sh` lists ranked candidates (stdout only, no pin file), `pick_connector.sh <nickname> <gav>` records the chosen row as a draft in `tmp/connector-choices/`, and `commit_connectors.sh` (Step 8, first action after TDD approval) promotes every draft to `tmp/connector-versions/`. Every GAV that reaches `dx mule project create --dependencies` or `pom.xml` must be pulled from a `tmp/connector-versions/*.json` file via `scripts/build_deps.sh` (for the full `--dependencies` string at Step 8) or `scripts/build_gav.sh` (for a single connector's GAV elsewhere in Phase 2). The catalog's versions are snapshots that drift — treat it only as a connector-identity reference, not as a version source.
 - **The agent does the picking, not the script.** `get_latest_connector.sh` deliberately emits a plain ranked list with no score, no emoji, and no "winner" signal. When the list has one row the choice is obvious. When it has several rows the agent must decide which one matches the user's stated system — and if the rows represent real variants of the same family (Slack `mule4-slack-connector` vs `mule-slack-connector`; FTP vs FTPS; Dynamics 365 vs Dynamics GP/NAV/BC; IBM MQ vs Solace vs JMS), the decision belongs to the user via `AskUserQuestion`, not to the agent's guess. The cost of one extra prompt is one turn; the cost of a silent wrong variant is a full Phase-2 rewrite.
-- **No HTTP fallback without evidence.** You may only classify a system as "no dedicated connector exists, use HTTP" AFTER `scripts/get_latest_connector.sh <system>` has run AND returned zero matches (exit 1) OR every row in the ranked list is obviously a different product (no assetId shares tokens with the system name beyond noise words like `mule`/`connector`). Declaring HTTP as the answer before the search has run is forbidden. Exchange carries dedicated connectors for hundreds of SaaS products that are easy to miss when reasoning from training-time knowledge alone — the helper script is the authoritative check. A dedicated connector gives metadata discovery, typed operations, and correct authentication; HTTP gives raw request plumbing the user would then have to wire up by hand, so quietly falling back to HTTP is a real loss, not a neutral choice. Note that any ranked row whose `groupId` is a UUID (e.g. `a50e4364-a38c-4340-b05a-c1f8ebed0748:…`) is a connector the user's organization has published privately to Exchange — treat these as first-class candidates, not noise. An org that took the trouble to publish a private connector usually wants it used, often because it wraps internal endpoints, custom auth, or a golden-path the public connector can't cover.
+- **No HTTP fallback without evidence.** You may only classify a system as "no dedicated connector exists, use HTTP" AFTER `scripts/get_latest_connector.sh <system>` has run AND returned zero matches (exit 1) OR every row in the ranked list is obviously a different product (no assetId shares tokens with the system name beyond noise words like `mule`/`connector`). Declaring HTTP as the answer before the search has run is forbidden. Exchange carries dedicated connectors for hundreds of SaaS products that are easy to miss when reasoning from training-time knowledge alone — the helper script is the authoritative check. A dedicated connector gives metadata discovery, typed operations, and correct authentication; HTTP gives raw request plumbing the user would then have to wire up by hand, so quietly falling back to HTTP is a real loss, not a neutral choice. Note that any ranked row whose `groupId` is a UUID (e.g. `a50e4364-a38c-4340-b05a-c1f8ebed0748:…`) is a connector the user's organization has published privately to Exchange — treat these as first-class candidates, not noise. An org that took the trouble to publish a private connector usually wants it used, often because it wraps internal endpoints, custom auth, or a golden-path the public connector can't cover. **When the search definitively returns nothing plausibly related (exit 1, or every row is obviously a different product), do NOT silently drop to bare HTTP — invoke Step 3a, which runs the `generate-connectivity-knowledge` skill so the HTTP path inherits the same auth, pagination, and entity awareness a dedicated connector would carry. Bare HTTP with no generated knowledge is a last resort, reachable only when Step 3a itself cannot produce a spec.**
 
 ---
 
@@ -254,7 +254,53 @@ For any system not in the list, search dynamically with the system name (e.g. `s
 
 ---
 
+## Step 3a: Generate Connectivity Knowledge for HTTP-Fallback Systems
+
+This step runs **only for a system that Step 3 has classified as HTTP-fallback** — meaning `scripts/get_latest_connector.sh <system>` exited 1 (zero matches) OR every ranked row was dismissed in Move 2 as a different product. It never runs before the Step 3 search has actually executed; "I think there's no connector" is not evidence (see *No HTTP fallback without evidence* in the workflow-wide discipline). Connector-backed systems in the same request skip Step 3a entirely.
+
+A bare HTTP request with no metadata leaves the agent guessing at base URLs, auth, pagination, and entity shapes — the exact metadata a dedicated connector would have supplied. This step closes that gap by generating it.
+
+**What to do — invoke `generate-connectivity-knowledge` for the system:**
+
+```
+use_skill generate-connectivity-knowledge
+  apiName        = <system in kebab-case, e.g. "coda", "canva-lms">
+  useCases       = <the concrete operations this flow needs for this system,
+                    extracted from the user prompt — one or more strings,
+                    e.g. "Get the newest courses and notify on new ones">
+  Project Folder = <workspaceRoot>/connectivity-schema/<system>/
+  documentation  = <any doc URLs the user supplied for this system> (optional)
+```
+
+The skill researches the API, generates an OpenAPI 3.0 spec, asks the user for credentials, validates every operation against the live service with auto-fix, and writes a self-contained folder. **Wait for it to finish before continuing** — Phase 1's remaining steps depend on its output.
+
+**Multi-system requests:** run Step 3a once per HTTP-fallback system, each with its own `apiName` and `connectivity-schema/<system>/` folder. A request can mix connector-backed and HTTP-fallback systems; only the latter go through Step 3a.
+
+**What it produces — `<workspaceRoot>/connectivity-schema/<system>/`:**
+
+| File | What Phase 2 reads from it |
+| --- | --- |
+| `api-reference.md` | Base URL (Overview), **Authentication** (scheme + header format + required credential keys), Rate Limits, **Use Cases** table, Entity Dependency Graph, Full CRUD Endpoint Catalog, per-entity **Entity Reference** (request/response schemas, field catalog, references, **Pagination**, side effects). |
+| `<system>.yaml` | The OpenAPI 3.0 spec — reference for operation/parameter shapes. |
+| `config.properties` | Placeholder credential keys; Phase 2's `<http:request-config>` references these by name, never their values. |
+
+This folder lives under the **workspace**, not `tmp/` — it is a user-facing artifact and is NOT removed by Step 17 cleanup (which only wipes `tmp/`).
+
+**How the rest of the workflow consumes it** (each step has an HTTP-fallback clause):
+- **Step 4** — skipped for this system (no connector to describe); its `sources[]`/`configs[]` equivalent is `api-reference.md`.
+- **Step 5** — no connector sources, so Rung 1 cannot apply; the trigger comes from Rung 2/3/4.
+- **Step 6** — auth comes from the `api-reference.md` Authentication section, not connector `configs[]`.
+- **Step 7** — the TDD lists each HTTP-fallback system in its own block for explicit user approval.
+- **Step 11** — builds `<http:request-config>` from `api-reference.md` + the Step 6 auth selection.
+- **Step 13** — derives each `<http:request>` from the Use Cases table + Entity Reference.
+
+If the skill cannot produce a usable spec (e.g. the API is undocumented and unreachable for validation), say so explicitly and fall back to bare HTTP only then — record that in the Step 7 TDD so the user sees the degraded path.
+
+---
+
 ## Step 4: Describe Connectors
+
+**HTTP-fallback systems (from Step 3a) have no connector to describe — skip this step for them.** There is no GAV and no `describe-connector` call; their equivalent of the `sources[]`/`configs[]` digest is the `api-reference.md` written to `connectivity-schema/<system>/` in Step 3a. Steps 5, 6, 11, and 13 read that file instead of `tmp/connector-metadata/`. Run the rest of this step only for connector-backed systems.
 
 For each connector resolved in Step 3, retrieve its full metadata and **read the digest** that the wrapper script prints. Use `describe_connector.sh` rather than writing the `describe-connector` pipeline by hand — the wrapper resolves the probe path, saves the full JSON to disk for later steps, AND echoes `sources[]` and `configs[]` to stdout so you see what Step 5 will need:
 
@@ -326,6 +372,8 @@ Why this gate exists: if the agent commits to a trigger before reading `sources[
 ### Decision ladder (evaluate in order)
 
 Work through the rungs below in order. Each rung is one of the possible *paths* — there is no "fallback" ranking; the first path whose preconditions all match is the one you take.
+
+**HTTP-fallback systems (from Step 3a) have no connector and therefore no `sources[]` — Rung 1 cannot apply to them.** This is a legitimate, evidenced skip (the Step 3 search found no connector), not the "didn't bother to look" failure the gate above guards against. For such a system, go straight to Rung 2 (the prompt names a cadence and the flow body calls operations), Rung 3 (the prompt asks to expose an endpoint / receive a webhook), or Rung 4 (none of those clearly apply). Outbound-only HTTP-fallback flows ("fetch X", "retrieve Y") with no cadence and no endpoint language land on Rung 4. Record "no connector exists for `<system>` (Step 3a HTTP-fallback)" as the Rung 1 rejection reason in the Step 7 TDD.
 
 #### Rung 1 — Connector-source path
 
@@ -417,6 +465,19 @@ Record the selected trigger, its owning connector (if any), and — if the path 
 ---
 
 ## Step 6: Select Connection Providers
+
+**HTTP-fallback systems (from Step 3a) have no connector `configs[]` — read auth from the generated `api-reference.md` instead.** Open `connectivity-schema/<system>/api-reference.md` and find its **Authentication** section. Map the documented scheme to the HTTP-connector connection shape you will write in Step 11:
+
+| `api-reference.md` Authentication scheme | HTTP Connector connection / header (Step 11) |
+| --- | --- |
+| Bearer token | `<http:request-connection>` + default header `Authorization: Bearer ${<key>}` |
+| API key (header) | default header `<header-name>: ${<key>}` |
+| Basic auth | `<http:basic-authentication username="${<key>}" password="${<key>}">` |
+| OAuth 2.0 | `<http:request-connection>` with the OAuth grant config the section documents |
+
+The required credential keys come straight from that Authentication section and already exist as placeholders in `connectivity-schema/<system>/config.properties` — Step 11 references them by name, never their values. Keep the "ask only when there is an actual choice" rule below: if `api-reference.md` documents exactly one scheme (the common case), state it inline and proceed; prompt only if it genuinely documents alternatives the user must choose between.
+
+For connector-backed systems, continue with the connector-metadata path:
 
 **Ask the user only when there is an actual choice to make.** For each connector, look at the `configs[]` metadata captured in Step 4 — specifically the `connectionProviders` list of the config that owns the operation you intend to call in Phase 2.
 
@@ -511,7 +572,7 @@ The driver choice will be part of the technical design. Step 7 shows it under "B
 
 ## Step 7: Present Technical Design Summary
 
-**[BLOCKER] Present ONLY after Steps 1–6 are complete.** Every connector must have a drafted GAV (from `tmp/connector-choices/*.json`), every connector must have captured metadata (from `tmp/connector-metadata/*.json`), and every config must have a selected provider. If any of those is missing, go back to the relevant step — do not paper over with "TBD" in the summary.
+**[BLOCKER] Present ONLY after Steps 1–6 are complete.** Every connector-backed system must have a drafted GAV (from `tmp/connector-choices/*.json`), captured metadata (from `tmp/connector-metadata/*.json`), and a selected provider. Every HTTP-fallback system must have a completed `connectivity-schema/<system>/` folder from Step 3a (`api-reference.md` + `<system>.yaml` + `config.properties`) and a selected auth scheme from Step 6. If any of those is missing, go back to the relevant step — do not paper over with "TBD" in the summary.
 
 ```
 **Technical Design Summary**
@@ -542,8 +603,19 @@ The driver choice will be part of the technical design. Step 7 shows it under "B
    - Config: <config-name> | Provider: <provider-name>
 2. ...
 
+**HTTP-fallback systems (connectivity knowledge generated in Step 3a):**
+(Omit this block entirely if no system fell back to HTTP. Include one entry per HTTP-fallback system.)
+1. <System Name> — no dedicated Exchange connector; using HTTP Connector with generated knowledge.
+   - Knowledge folder: <workspaceRoot>/connectivity-schema/<system>/
+   - Base URL: <from api-reference.md Overview>
+   - Auth: <scheme from api-reference.md Authentication> (config keys: <KEY1, KEY2>)
+   - Use cases → operations: <N operations the flow will call — method + path each>
+   - Pagination: <strategy from api-reference.md, or "none">
+   - Live validation: <passed / fixed / failed counts from the skill's final report>
+2. ...
+
 **Build-time additions (auto):**
-- `mule-http-connector` — included if the trigger is HTTP Listener OR any Step 6 provider is OAuth-family (callback listener)
+- `mule-http-connector` — included if the trigger is HTTP Listener OR any Step 6 provider is OAuth-family (callback listener) OR any system is HTTP-fallback (the `<http:request>` outbound calls need it)
 - JDBC driver(s) — included if `mule-db-connector` is in scope. List **every** `groupId:artifactId:version` recorded in `tmp/connector-choices/db-driver.json` from Step 6b, plus the driver class. Vague phrasing like "PostgreSQL JDBC driver included" is not acceptable here — the user is approving an explicit build edit and needs the exact coordinates.
   Example:
   - `org.postgresql:postgresql:42.7.11` (driver class `org.postgresql.Driver`) — added as `<dependency>` and `<sharedLibrary>` in `pom.xml`.
@@ -684,6 +756,19 @@ If *any* provider argument matches `oauth`, `jwt`, `auth-code`, or `authorizatio
 
 ## Step 11: Get Configuration Details
 
+**HTTP-fallback systems (from Step 3a) have no connector config to fetch — build the `<http:request-config>` from `connectivity-schema/<system>/api-reference.md`.** Take the host/port/basePath from its **Overview** (base URL) and the connection/auth shape from the scheme you selected in Step 6. Inject credentials by reference to the `config.properties` keys, never as literals. Example for a Bearer-token API:
+
+```xml
+<http:request-config name="<system>Config" basePath="/v1">
+    <http:request-connection host="api.example.com" port="443" protocol="HTTPS"/>
+    <http:default-headers>
+        <http:default-header key="Authorization" value="Bearer ${api.token}"/>
+    </http:default-headers>
+</http:request-config>
+```
+
+The `${api.token}` placeholder resolves from `config.properties`; Step 12 wires that property file into the project. For connector-backed systems, continue below.
+
 Phase 1 Step 6 already persisted `config-detail` output to `tmp/connector-metadata/<nickname>-config.json`. Read it from there:
 
 ```bash
@@ -812,6 +897,17 @@ slack:
 ---
 
 ## Step 13: Get Operation / Source Details
+
+**HTTP-fallback systems (from Step 3a) have no connector operations to introspect — derive each call from `connectivity-schema/<system>/api-reference.md`.** For every use case the flow serves, take the method, path, path/query parameters, request body shape, and pagination strategy from that file's **Use Cases** table and per-entity **Entity Reference**, and emit an `<http:request>` against the Step 11 config. Example (the HTTP-fallback equivalent of the connector-operation example below):
+
+```xml
+<http:request method="GET" path="/opportunities" config-ref="<system>Config"
+    doc:name="List opportunities" doc:description="Fetch closed-won opportunities">
+    <http:query-params>#[{ "stage": "closed_won", "limit": "100" }]</http:query-params>
+</http:request>
+```
+
+Honor the pagination strategy `api-reference.md` documents (cursor vs. offset) and the rate limits / `Retry-After` behavior from its Rate Limits section. For connector-backed systems, continue below.
 
 For each operation the flow will call, retrieve metadata:
 
