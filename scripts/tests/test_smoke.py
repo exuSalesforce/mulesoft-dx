@@ -1059,18 +1059,26 @@ def test_terraform_per_version_pages_generated(generated_portal):
     assert "location.hash" in legacy_text
 
 
-def test_terraform_single_version_renders_badge_not_selector(generated_portal):
-    """When a provider has only one version, the header shows a flat
-    version badge (no dropdown) — same visual as non-versioned APIs."""
+def test_terraform_single_version_renders_disabled_dropdown(generated_portal):
+    """When a provider has only one version, the header shows the version
+    dropdown component with the toggle disabled (same shape as multi-version,
+    but non-interactive). No native <select> is rendered."""
     page = (generated_portal / "terraform" / "anypoint-provider" / "0.0.6.html").read_text()
     soup = BeautifulSoup(page, "html.parser")
-    # Flat badge present
-    badge = soup.select_one(".badge.badge-version")
-    assert badge is not None
-    assert badge.get_text(strip=True) == "0.0.6"
-    # No selector rendered for single-version
-    assert soup.select_one(".tf-version-selector-inline") is None
+    # Generic badge-version is suppressed on terraform pages
+    assert soup.select_one(".auth-panel-center .badge.badge-version") is None
+    # Dropdown component rendered with is-single modifier
+    dropdown = soup.select_one(".tf-version-dropdown.is-single")
+    assert dropdown is not None
+    toggle = dropdown.select_one(".tf-version-dropdown-toggle")
+    assert toggle is not None
+    assert toggle.has_attr("disabled")
+    assert toggle.get_text(strip=True) == "0.0.6"
+    # No menu rendered
+    assert dropdown.select_one(".tf-version-dropdown-menu") is None
+    # Legacy native <select> must not appear
     assert soup.select_one("#tf-version-select") is None
+    assert soup.select_one(".tf-version-selector-inline") is None
 
 
 def test_homepage_terraform_card_links_to_index(generated_portal):
@@ -1081,7 +1089,8 @@ def test_homepage_terraform_card_links_to_index(generated_portal):
     assert card is not None
     href = card["href"]
     assert href.endswith("anypoint-provider/index.html") or href.endswith("anypoint-provider/")
-    assert "0.0.6" in card.get_text()
+    # Version chip removed from card per AC1 of terraform-ux-improvements
+    assert soup.select_one(".tf-card-version") is None
 
 
 def test_multi_version_anchor_map_marks_unique_resources(tmp_path):

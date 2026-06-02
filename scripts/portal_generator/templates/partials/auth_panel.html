@@ -6,46 +6,42 @@
     </div>
     <div class="auth-panel-center">
         <h1 class="api-title"><a href="#overview" class="api-title-link">{{ api_name }}</a></h1>
-        {% if api_version %}<span class="badge badge-version">{{ api_version }}</span>{% endif %}
+        {% if provider is defined and provider %}
+        {% set tf_versions = provider.versions or [] %}
+        {% set tf_multi = tf_versions|length > 1 %}
+        <div class="tf-version-dropdown{% if not tf_multi %} is-single{% endif %}"
+             data-provider-slug="{{ provider.slug }}"
+             data-current-version="{{ version.version }}">
+          <button type="button"
+                  class="tf-version-dropdown-toggle"
+                  aria-haspopup="{% if tf_multi %}true{% else %}false{% endif %}"
+                  aria-expanded="false"
+                  {% if not tf_multi %}disabled aria-disabled="true"{% else %}onclick="toggleTfVersionDropdown(this)"{% endif %}>
+            <span class="tf-version-dropdown-label">{{ version.version }}</span>
+            {% if tf_multi %}
+            <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            {% endif %}
+          </button>
+          {% if tf_multi %}
+          <div class="tf-version-dropdown-menu" role="menu" hidden>
+            {% for v in tf_versions %}
+            <button type="button"
+                    role="menuitem"
+                    class="tf-version-dropdown-item{% if v.version == version.version %} is-current{% endif %}"
+                    data-version="{{ v.version }}"
+                    onclick="navigateTfVersion(this)">
+              <span>{{ v.version }}</span>
+              {% if v.is_latest %}<span class="tf-version-tag">latest</span>{% endif %}
+            </button>
+            {% endfor %}
+          </div>
+          <script type="application/json" id="tf-version-anchors">{{ version_anchors | tojson }}</script>
+          {% endif %}
+        </div>
+        {% elif api_version %}<span class="badge badge-version">{{ api_version }}</span>{% endif %}
     </div>
     {% if terraform_install_info %}
     <div class="auth-panel-right">
-        {% if provider is defined and provider.versions and provider.versions|length > 1 %}
-        <span class="tf-version-selector-inline">
-          <select id="tf-version-select"
-                  class="tf-version-select"
-                  data-provider-slug="{{ provider.slug }}"
-                  data-current-version="{{ version.version }}"
-                  aria-label="Select provider version">
-            {% for v in provider.versions %}
-              <option value="{{ v.version }}"{% if v.version == version.version %} selected{% endif %}>{{ v.version }}{% if v.is_latest %} (latest){% endif %}</option>
-            {% endfor %}
-          </select>
-          <svg class="tf-version-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-        </span>
-        <script type="application/json" id="tf-version-anchors">{{ version_anchors | tojson }}</script>
-        <script>
-          (function () {
-            var sel = document.getElementById('tf-version-select');
-            if (!sel) return;
-            var anchorsEl = document.getElementById('tf-version-anchors');
-            var anchors = anchorsEl ? JSON.parse(anchorsEl.textContent) : {};
-            sel.addEventListener('change', function () {
-              var target = sel.value;
-              var current = sel.dataset.currentVersion;
-              if (target === current) return;
-              var hash = window.location.hash;
-              var fragment = '';
-              if (hash.indexOf('#doc-') === 0) {
-                fragment = hash.slice('#doc-'.length);
-              }
-              var slugs = anchors[target] || [];
-              var has = fragment && slugs.indexOf(fragment) !== -1;
-              window.location.href = target + '.html' + (has ? '#doc-' + fragment : '');
-            });
-          })();
-        </script>
-        {% endif %}
         <div class="skill-actions-bar skill-actions-bar-header">
             <div class="skill-split-btn" id="skill-actions-terraform">
                 <button class="skill-split-main" onclick="openTerraformProviderModal()">

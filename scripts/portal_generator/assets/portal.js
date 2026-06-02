@@ -4240,6 +4240,59 @@ function toggleSkillDropdown(slug) {
     if (toggle) toggle.setAttribute('aria-expanded', isVisible ? 'false' : 'true');
 }
 
+// ============================================================================
+// Terraform Version Dropdown
+// ============================================================================
+
+function toggleTfVersionDropdown(toggleEl) {
+    var root = toggleEl.closest('.tf-version-dropdown');
+    if (!root) return;
+    var menu = root.querySelector('.tf-version-dropdown-menu');
+    if (!menu) return;
+    var isOpen = !menu.hasAttribute('hidden');
+    document.querySelectorAll('.tf-version-dropdown-menu').forEach(function (m) {
+        if (m !== menu) {
+            m.setAttribute('hidden', '');
+            var t = m.parentElement.querySelector('.tf-version-dropdown-toggle');
+            if (t) t.setAttribute('aria-expanded', 'false');
+        }
+    });
+    if (isOpen) {
+        menu.setAttribute('hidden', '');
+        toggleEl.setAttribute('aria-expanded', 'false');
+    } else {
+        menu.removeAttribute('hidden');
+        toggleEl.setAttribute('aria-expanded', 'true');
+    }
+}
+
+function navigateTfVersion(itemEl) {
+    var root = itemEl.closest('.tf-version-dropdown');
+    if (!root) return;
+    var target = itemEl.dataset.version;
+    var current = root.dataset.currentVersion;
+    if (!target || target === current) return;
+    var anchorsEl = root.querySelector('#tf-version-anchors');
+    var anchors = {};
+    if (anchorsEl) {
+        try { anchors = JSON.parse(anchorsEl.textContent) || {}; } catch (e) { anchors = {}; }
+    }
+    var hash = window.location.hash;
+    var fragment = (hash.indexOf('#doc-') === 0) ? hash.slice('#doc-'.length) : '';
+    var slugs = anchors[target] || [];
+    var has = fragment && slugs.indexOf(fragment) !== -1;
+    window.location.href = target + '.html' + (has ? '#doc-' + fragment : '');
+}
+
+document.addEventListener('click', function (ev) {
+    if (ev.target.closest('.tf-version-dropdown')) return;
+    document.querySelectorAll('.tf-version-dropdown-menu').forEach(function (m) {
+        m.setAttribute('hidden', '');
+        var t = m.parentElement.querySelector('.tf-version-dropdown-toggle');
+        if (t) t.setAttribute('aria-expanded', 'false');
+    });
+});
+
 function openInstallModal(slug) {
     var modal = document.getElementById('install-modal-' + slug);
     if (modal) modal.style.display = 'flex';
