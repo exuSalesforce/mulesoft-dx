@@ -6404,11 +6404,10 @@ details[open] .examples-toggle-icon {
 .btn-auth-login.loading::after {
     content: '';
     position: absolute;
-    top: 50%;
-    left: 50%;
+    inset: 0;
     width: 14px;
     height: 14px;
-    margin: -7px 0 0 -7px;
+    margin: auto;
     border: 2px solid #0052CC;
     border-top-color: transparent;
     border-radius: 50%;
@@ -6422,6 +6421,61 @@ details[open] .examples-toggle-icon {
 
 @keyframes auth-spin {
     to { transform: rotate(360deg); }
+}
+
+.btn-auth-logout {
+    margin-top: auto;
+    height: 32px;
+    padding: 6px 16px;
+    background: var(--color-bg-surface);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 9999px;
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all 0.15s;
+    align-self: flex-end;
+    white-space: nowrap;
+}
+
+.btn-auth-logout:hover {
+    background: var(--color-bg-primary);
+    border-color: var(--color-border-focus);
+}
+
+.auth-logged-as {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    padding: var(--space-sm) 0;
+}
+
+.auth-logged-as-label {
+    font-size: var(--font-size-2);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.auth-logged-as-value {
+    font-size: var(--font-size-4);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-semibold);
+    word-break: break-all;
+}
+
+.auth-server-locked-hint {
+    margin: 0.5rem 0 0;
+    font-size: var(--font-size-2);
+    color: var(--color-text-secondary);
+    font-style: italic;
+}
+
+.server-select:disabled,
+.server-var-input:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .auth-message {
@@ -6487,6 +6541,15 @@ details[open] .examples-toggle-icon {
 .btn-env-add:hover {
     background: #F3F4F6;
     border-color: #9CA3AF;
+}
+
+.btn-env-add:disabled,
+.btn-env-remove:disabled,
+.env-var-name:disabled,
+.env-var-value:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 .env-var-row {

@@ -2263,10 +2263,91 @@ function openAuthModal() {
     var modal = document.getElementById('authModal');
     if (!modal) return;
     modal.style.display = 'flex';
-    closeAuthDropdown();
+    applyAuthModalMode();
     modal._previousFocus = document.activeElement;
-    var firstFocusable = modal.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    var firstFocusable = modal.querySelector('button:not([style*="display:none"]):not([style*="display: none"]), input:not([readonly]), select:not([disabled]), textarea, [tabindex]:not([tabindex="-1"])');
     if (firstFocusable) firstFocusable.focus();
+}
+
+function applyAuthModalMode() {
+    var token = sessionStorage.getItem('anypoint_token');
+    var authenticated = !!token && !isTokenExpired();
+    var authMethod = sessionStorage.getItem('anypoint_auth_method') || 'Bearer';
+    var identity = sessionStorage.getItem('anypoint_identity') || '';
+
+    var bearerTabBtn = document.querySelector('.auth-tab[data-tab="bearer"]');
+    var oauth2TabBtn = document.querySelector('.auth-tab[data-tab="oauth2"]');
+    var username = document.getElementById('authUsername');
+    var password = document.getElementById('authPassword');
+    var clientId = document.getElementById('authClientId');
+    var clientSecret = document.getElementById('authClientSecret');
+    var bearerLoginBtn = document.getElementById('authBearerLoginBtn');
+    var bearerLogoutBtn = document.getElementById('authBearerLogoutBtn');
+    var oauth2LoginBtn = document.getElementById('authOauth2LoginBtn');
+    var oauth2LogoutBtn = document.getElementById('authOauth2LogoutBtn');
+    var bearerLoggedAs = document.getElementById('authBearerLoggedAs');
+    var bearerLoggedAsValue = document.getElementById('authBearerLoggedAsValue');
+    var oauth2LoggedAs = document.getElementById('authOauth2LoggedAs');
+    var oauth2LoggedAsValue = document.getElementById('authOauth2LoggedAsValue');
+    var serverSelect = document.getElementById('serverSelect');
+    var regionPreset = document.getElementById('regionPreset');
+    var regionCustom = document.getElementById('regionCustomInput');
+    var lockedHint = document.getElementById('authServerLockedHint');
+
+    if (authenticated) {
+        var activeTab = (authMethod === 'OAuth2') ? 'oauth2' : 'bearer';
+        switchAuthTab(activeTab);
+        // Hide the inactive tab so the user can't switch auth methods mid-session.
+        if (bearerTabBtn) bearerTabBtn.style.display = (activeTab === 'bearer') ? '' : 'none';
+        if (oauth2TabBtn) oauth2TabBtn.style.display = (activeTab === 'oauth2') ? '' : 'none';
+
+        // Show the "Logged in as <user>" label, hide the credential inputs.
+        if (activeTab === 'bearer') {
+            if (bearerLoggedAsValue) bearerLoggedAsValue.textContent = identity;
+            if (bearerLoggedAs) bearerLoggedAs.style.display = '';
+            if (username) username.style.display = 'none';
+            if (password) password.style.display = 'none';
+            if (bearerLoginBtn) bearerLoginBtn.style.display = 'none';
+            if (bearerLogoutBtn) bearerLogoutBtn.style.display = '';
+        } else {
+            if (oauth2LoggedAsValue) oauth2LoggedAsValue.textContent = identity;
+            if (oauth2LoggedAs) oauth2LoggedAs.style.display = '';
+            if (clientId) clientId.style.display = 'none';
+            if (clientSecret) clientSecret.style.display = 'none';
+            if (oauth2LoginBtn) oauth2LoginBtn.style.display = 'none';
+            if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = '';
+        }
+
+        if (serverSelect) serverSelect.disabled = true;
+        if (regionPreset) regionPreset.disabled = true;
+        if (regionCustom) regionCustom.disabled = true;
+        if (lockedHint) lockedHint.style.display = '';
+
+        syncEnvVarsLock();
+    } else {
+        if (bearerTabBtn) bearerTabBtn.style.display = '';
+        if (oauth2TabBtn) oauth2TabBtn.style.display = '';
+
+        if (bearerLoggedAs) bearerLoggedAs.style.display = 'none';
+        if (oauth2LoggedAs) oauth2LoggedAs.style.display = 'none';
+
+        if (username) { username.value = ''; username.style.display = ''; }
+        if (password) { password.value = ''; password.style.display = ''; }
+        if (clientId) { clientId.value = ''; clientId.style.display = ''; }
+        if (clientSecret) { clientSecret.value = ''; clientSecret.style.display = ''; }
+
+        if (bearerLoginBtn) bearerLoginBtn.style.display = '';
+        if (bearerLogoutBtn) bearerLogoutBtn.style.display = 'none';
+        if (oauth2LoginBtn) oauth2LoginBtn.style.display = '';
+        if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = 'none';
+
+        if (serverSelect) serverSelect.disabled = false;
+        if (regionPreset) regionPreset.disabled = false;
+        if (regionCustom) regionCustom.disabled = false;
+        if (lockedHint) lockedHint.style.display = 'none';
+
+        syncEnvVarsLock();
+    }
 }
 
 function closeAuthModal() {
@@ -2304,7 +2385,6 @@ function isTokenExpired() {
 
 function updateAuthSummary() {
     var token = sessionStorage.getItem('anypoint_token');
-    var authMethod = sessionStorage.getItem('anypoint_auth_method') || '';
     var identity = sessionStorage.getItem('anypoint_identity') || '';
     var expired = isTokenExpired();
 
@@ -2376,30 +2456,6 @@ function updateAuthSummary() {
         }
     }
 
-    // Auth method
-    var methodItem = document.getElementById('authSummaryMethod');
-    var methodText = document.getElementById('authMethodText');
-    if (methodItem && methodText) {
-        if (token && authMethod) {
-            methodText.textContent = authMethod;
-            methodItem.style.display = '';
-        } else {
-            methodItem.style.display = 'none';
-        }
-    }
-
-    // Identity (username or clientId)
-    var identityItem = document.getElementById('authSummaryIdentity');
-    var identityText = document.getElementById('authIdentityText');
-    if (identityItem && identityText) {
-        if (token && identity) {
-            identityText.textContent = identity;
-            identityItem.style.display = '';
-        } else {
-            identityItem.style.display = 'none';
-        }
-    }
-
     // Region
     var regionText = document.getElementById('authRegionText');
     if (regionText) {
@@ -2437,43 +2493,15 @@ function logout() {
     sessionStorage.removeItem('anypoint_identity');
     sessionStorage.removeItem('anypoint_token_expires_at');
     stopTtlTimer();
-    var fields = ['authUsername', 'authPassword', 'authClientId', 'authClientSecret'];
-    fields.forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.value = '';
-    });
     updateAuthSummary();
-    closeAuthDropdown();
+    var modal = document.getElementById('authModal');
+    if (modal && modal.style.display !== 'none') {
+        applyAuthModalMode();
+    }
 }
 
 function onAuthButtonClick() {
-    var token = sessionStorage.getItem('anypoint_token');
-    if (token && !isTokenExpired()) {
-        toggleAuthDropdown();
-    } else {
-        openAuthModal();
-    }
-}
-
-function toggleAuthDropdown() {
-    var menu = document.getElementById('authDropdownMenu');
-    if (!menu) return;
-    var isOpen = menu.style.display !== 'none';
-    _closeAllSkillDropdowns();
-    if (isOpen) {
-        closeAuthDropdown();
-    } else {
-        menu.style.display = 'block';
-        var btn = document.getElementById('authStatusButton');
-        if (btn) btn.setAttribute('aria-expanded', 'true');
-    }
-}
-
-function closeAuthDropdown() {
-    var menu = document.getElementById('authDropdownMenu');
-    if (menu) menu.style.display = 'none';
-    var btn = document.getElementById('authStatusButton');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
+    openAuthModal();
 }
 
 function showAuthMessage(msg, isError) {
@@ -2530,6 +2558,7 @@ async function loginBearer() {
             if (typeof updateAllPlaygroundPanelsFromEnvVars === 'function') {
                 updateAllPlaygroundPanelsFromEnvVars();
             }
+            applyAuthModalMode();
         } else {
             var errMsg = body.message || body.error || data.body || 'Unknown error';
             showAuthMessage('Login failed: ' + errMsg, true);
@@ -2590,6 +2619,7 @@ async function loginOAuth2() {
             if (typeof updateAllPlaygroundPanelsFromEnvVars === 'function') {
                 updateAllPlaygroundPanelsFromEnvVars();
             }
+            applyAuthModalMode();
         } else {
             var errMsg = body.error_description || body.error || data.body || 'Unknown error';
             showAuthMessage('Token request failed: ' + errMsg, true);
@@ -3045,17 +3075,30 @@ function renderEnvVars() {
             '<button class="btn-env-remove" onclick="removeEnvVar(this)" title="Remove">&#x2715;</button>';
         container.appendChild(row);
     });
+    syncEnvVarsLock();
 }
 
 function escapeAttr(str) {
     return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function syncEnvVarsLock() {
+    var token = sessionStorage.getItem('anypoint_token');
+    var locked = !!token && !isTokenExpired();
+    var addBtn = document.querySelector('.btn-env-add');
+    if (addBtn) addBtn.disabled = locked;
+    document.querySelectorAll('#envVarsList input').forEach(function(el) { el.disabled = locked; });
+    document.querySelectorAll('#envVarsList button').forEach(function(el) { el.disabled = locked; });
+}
+
 function addEnvVar() {
+    var token = sessionStorage.getItem('anypoint_token');
+    if (token && !isTokenExpired()) return;
     var vars = loadEnvVars();
     vars.push({name: '', value: ''});
     sessionStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(vars));
     renderEnvVars();
+    syncEnvVarsLock();
     // Focus the new name input
     var rows = document.querySelectorAll('.env-var-row');
     if (rows.length > 0) {
@@ -4417,9 +4460,6 @@ function _closeAllSkillDropdowns() {
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.skill-split-btn')) {
         _closeAllSkillDropdowns();
-    }
-    if (!e.target.closest('.auth-button-wrapper')) {
-        closeAuthDropdown();
     }
 });
 

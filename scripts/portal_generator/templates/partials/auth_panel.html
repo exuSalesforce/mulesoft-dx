@@ -96,7 +96,7 @@
         {% endif %}
         {% if not prose_only|default(false) %}
         <div class="auth-button-wrapper">
-            <button class="auth-panel-status" onclick="onAuthButtonClick()" aria-label="Authentication status" aria-haspopup="true" aria-expanded="false" id="authStatusButton">
+            <button class="auth-panel-status" onclick="onAuthButtonClick()" aria-label="Authentication status" aria-haspopup="dialog" id="authStatusButton">
                 <span class="auth-status-container" id="authStatusContainer">
                     <img class="auth-status-dot" id="authStatusDot" src="{{ icons_path }}/status-dot-red.svg" alt="" aria-hidden="true">
                     <span class="auth-status-text" id="authStatusText">Not authenticated</span>
@@ -114,12 +114,6 @@
                     </span>
                 </span>
             </button>
-            <div class="auth-dropdown-menu" id="authDropdownMenu" role="menu" style="display:none">
-                <button onclick="logout()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    Log Out
-                </button>
-            </div>
         </div>
         {% endif %}
     </div>
@@ -152,6 +146,7 @@
                     </select>
                     <input type="text" id="regionCustomInput" class="server-var-input" placeholder="e.g. eu1" style="display:none" aria-label="Custom region">
                 </div>
+                <p class="auth-server-locked-hint" id="authServerLockedHint" style="display:none">Log out to switch server.</p>
             </div>
 
             <div class="auth-tabs" role="tablist">
@@ -165,17 +160,27 @@
 
             <div class="auth-tab-content active" id="authTabBearer" role="tabpanel">
                 <div class="auth-form">
+                    <div class="auth-logged-as" id="authBearerLoggedAs" style="display:none">
+                        <span class="auth-logged-as-label">Logged in as</span>
+                        <strong class="auth-logged-as-value" id="authBearerLoggedAsValue"></strong>
+                    </div>
                     <input id="authUsername" type="text" placeholder="Username" autocomplete="username" aria-label="Username">
                     <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
-                    <button class="btn-auth-login" onclick="loginBearer()">Login</button>
+                    <button class="btn-auth-login" id="authBearerLoginBtn" onclick="loginBearer()">Login</button>
+                    <button class="btn-auth-logout" id="authBearerLogoutBtn" onclick="logout()" style="display:none">Log Out</button>
                 </div>
             </div>
 
             <div class="auth-tab-content" id="authTabOauth2" role="tabpanel">
                 <div class="auth-form">
+                    <div class="auth-logged-as" id="authOauth2LoggedAs" style="display:none">
+                        <span class="auth-logged-as-label">Logged in as</span>
+                        <strong class="auth-logged-as-value" id="authOauth2LoggedAsValue"></strong>
+                    </div>
                     <input id="authClientId" type="text" placeholder="Client Id" aria-label="Client Id">
                     <input id="authClientSecret" type="password" placeholder="Client Secret" aria-label="Client Secret">
-                    <button class="btn-auth-login" onclick="loginOAuth2()">Get Token</button>
+                    <button class="btn-auth-login" id="authOauth2LoginBtn" onclick="loginOAuth2()">Get Token</button>
+                    <button class="btn-auth-logout" id="authOauth2LogoutBtn" onclick="logout()" style="display:none">Log Out</button>
                 </div>
             </div>
 
