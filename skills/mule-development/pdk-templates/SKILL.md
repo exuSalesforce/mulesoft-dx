@@ -18,6 +18,7 @@ Trigger on any request shaped like "how do I <thing> in PDK?", "show me a PDK te
 
 ## When NOT to use this skill
 
+- **Setting up the development environment (Anypoint CLI, Rust, wasm target, Docker)** → use `pdk-prerequisites`. That skill verifies and installs all tools needed before any PDK work.
 - **Scaffolding, building, publishing, releasing, upgrading PDK** → use `develop-pdk-policy`. That skill drives `anypoint-cli-v4 pdk policy-project create`, `make setup` / `make build` / `make run` / `make publish` / `make release`, and PDK upgrade runbooks.
 - **Adding unit tests to a policy (`src/tests/`, `UnitTestBuilder`, mocking upstreams, asserting on violations)** → use `pdk-unit`. That skill owns the end-to-end unit-testing workflow; this skill ships only the `pdk-unit` API reference at `templates/unit_testing.md`.
 - **Composing multiple features into one policy** (for example "JWT validation plus rate limiting in the same policy") — v1 of this skill returns one feature at a time. Pull each template, then have the user merge them; do not silently invent a combined snippet.

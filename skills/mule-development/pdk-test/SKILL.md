@@ -28,6 +28,8 @@ Decision tree:
 
 ## Prerequisites
 
+If the developer's environment is not yet set up (missing Anypoint CLI, Rust, wasm target, or Docker), defer to the **`pdk-prerequisites`** sibling skill before continuing.
+
 Before writing any test, verify these in order:
 
 ### 1. Docker is running

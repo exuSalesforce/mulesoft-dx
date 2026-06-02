@@ -18,7 +18,7 @@ Drive the full lifecycle of a custom Flex Gateway policy project: verify prerequ
 
 ## Step 1: Verify Prerequisites
 
-Before running any `pdk` command, confirm the developer has the required toolchain. Run these checks and report each result. If any check fails, stop and link the user to https://docs.mulesoft.com/pdk/latest/policies-pdk-prerequisites — do not propose workarounds or auto-install.
+Before running any `pdk` command, confirm the developer has the required toolchain. Run these checks and report each result. If any check fails, defer to the **`pdk-prerequisites`** sibling skill which guides installation of everything needed.
 
 **Check Anypoint CLI v4 and the PDK plugin:**
 
@@ -294,7 +294,8 @@ If traffic still hits the old behavior after both steps, confirm in Runtime Mana
 
 ## Additional Resources
 
-- **PDK prerequisites:** https://docs.mulesoft.com/pdk/latest/policies-pdk-prerequisites
+- **Sibling skill `pdk-prerequisites`:** verify and install all required tools (Anypoint CLI, PDK plugin, Rust, wasm target, Docker, credentials) — use when any check fails or the developer is setting up from scratch.
+- **PDK prerequisites (official docs):** https://docs.mulesoft.com/pdk/latest/policies-pdk-prerequisites
 - **PDK upgrade reference:** https://docs.mulesoft.com/pdk/latest/policies-pdk-upgrade-pdk
 - **PDK overview:** https://docs.mulesoft.com/pdk/latest/
 - **Custom policy examples (docs):** https://docs.mulesoft.com/pdk/latest/policies-pdk-policy-templates
