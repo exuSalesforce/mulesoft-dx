@@ -1749,6 +1749,29 @@ code {
     background: rgba(227, 179, 65, 0.25);
 }
 
+[data-theme="dark"] .auth-dropdown-menu {
+    background: #21262d;
+    border-color: #30363d;
+}
+
+[data-theme="dark"] .auth-dropdown-menu button,
+[data-theme="dark"] .auth-dropdown-menu a {
+    color: #c9d1d9;
+}
+
+[data-theme="dark"] .auth-dropdown-menu button:hover,
+[data-theme="dark"] .auth-dropdown-menu a:hover {
+    background: #30363d;
+}
+
+[data-theme="dark"] .auth-dropdown-menu button:last-child {
+    color: #f85149;
+}
+
+[data-theme="dark"] .auth-dropdown-menu button:last-child:hover {
+    background: rgba(248, 81, 73, 0.15);
+}
+
 [data-theme="dark"] .badge-security {
     background: var(--color-neutral-2);
     color: var(--color-text-secondary);
@@ -1823,6 +1846,20 @@ code {
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* Search match highlight on catalog cards */
+.search-highlight {
+    background: var(--color-yellow-100);
+    color: var(--color-yellow-800);
+    padding: 0 2px;
+    border-radius: var(--radius-small);
+    font-weight: var(--font-weight-semibold);
+}
+
+[data-theme="dark"] .search-highlight {
+    background: var(--color-badge-bg);
+    color: var(--color-badge-text);
 }
 
 /* Grid view: hide list-only columns */
@@ -5050,8 +5087,6 @@ details[open] .examples-toggle-icon {
     margin: 0;
     max-width: 100%;
     box-sizing: border-box;
-    max-height: 400px;
-    overflow-y: auto;
 }
 
 .example-code code {
@@ -6063,6 +6098,57 @@ details[open] .examples-toggle-icon {
     max-width: 200px;
 }
 
+/* Auth button wrapper (positions dropdown relative to button) */
+.auth-button-wrapper {
+    position: relative;
+    display: inline-flex;
+}
+
+/* Auth dropdown menu */
+.auth-dropdown-menu {
+    position: absolute;
+    top: calc(100% + var(--space-xs));
+    right: 0;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius-large);
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    z-index: 100;
+    padding: var(--space-xs) 0;
+}
+
+.auth-dropdown-menu button,
+.auth-dropdown-menu a {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    border: none;
+    background: none;
+    font-size: var(--font-size-4);
+    font-family: var(--font-sans);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    text-decoration: none;
+    text-align: left;
+}
+
+.auth-dropdown-menu button:hover,
+.auth-dropdown-menu a:hover {
+    background: var(--color-bg-primary);
+}
+
+.auth-dropdown-menu button:last-child {
+    color: var(--color-red-600);
+}
+
+.auth-dropdown-menu button:last-child:hover {
+    background: var(--color-red-50);
+}
+
+
 /* Auth modal */
 .auth-modal {
     position: fixed;
@@ -6215,7 +6301,7 @@ details[open] .examples-toggle-icon {
     transition: all 0.2s ease;
 }
 
-.auth-tab:hover {
+.auth-tab:hover:not(:disabled) {
     background: var(--hover-bg);
 }
 
@@ -6303,6 +6389,106 @@ details[open] .examples-toggle-icon {
 [data-theme="dark"] .btn-auth-login:hover {
     background: #3A8CB0;
     border-color: #3A8CB0;
+}
+
+.btn-auth-login:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-auth-login.loading {
+    position: relative;
+    color: transparent;
+}
+
+.btn-auth-login.loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 14px;
+    height: 14px;
+    margin: auto;
+    border: 2px solid #0052CC;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: auth-spin 0.6s linear infinite;
+}
+
+[data-theme="dark"] .btn-auth-login.loading::after {
+    border-color: #FFFFFF;
+    border-top-color: transparent;
+}
+
+@keyframes auth-spin {
+    to { transform: rotate(360deg); }
+}
+
+.btn-auth-logout {
+    margin-top: auto;
+    height: 32px;
+    padding: 6px 16px;
+    background: #E7F1FF;
+    color: #0052CC;
+    border: 1px solid #B3D4FF;
+    border-radius: 9999px;
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all 0.15s;
+    align-self: center;
+    white-space: nowrap;
+}
+
+.btn-auth-logout:hover {
+    background: #D1E5FF;
+    border-color: #80BFFF;
+}
+
+[data-theme="dark"] .btn-auth-logout {
+    background: #2D7A9E;
+    color: #FFFFFF;
+    border-color: #2D7A9E;
+}
+
+[data-theme="dark"] .btn-auth-logout:hover {
+    background: #3A8CB0;
+    border-color: #3A8CB0;
+}
+
+.auth-logged-as {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xx-small);
+    padding: var(--space-medium) 0 0;
+    text-align: center;
+}
+
+/* Tighten the gap between the LOGGED IN AS block and the Logout button.
+   Negative margin offsets the parent .auth-form `gap`. */
+.auth-logged-as + .btn-auth-logout {
+    margin-top: calc(var(--space-x-small) - var(--space-medium));
+}
+
+.auth-logged-as-label {
+    font-size: var(--font-size-2);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.auth-logged-as-value {
+    font-size: var(--font-size-6);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-semibold);
+    word-break: break-all;
+}
+
+.server-select:disabled,
+.server-var-input:disabled,
+.auth-tab:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .auth-message {
@@ -7429,8 +7615,6 @@ details[open] .examples-toggle-icon {
     display: none;
     font-size: var(--font-size-3);
     color: var(--color-text-primary);
-    max-height: 500px;
-    overflow-y: auto;
     margin: 0;
 }
 
@@ -9919,13 +10103,22 @@ code[class*="language-"][class*="language-"] {
     color: var(--color-text-primary);
 }
 
-.mcp-config-code {
+.mcp-config-code,
+pre[class*="language-"].mcp-config-code,
+.mcp-ide-modal pre[class*="language-"] {
     margin: 0;
     padding: var(--space-md);
     font-family: var(--font-mono);
     font-size: var(--font-size-3);
     background: var(--color-bg-primary);
     overflow-x: auto;
+    text-shadow: none;
+}
+
+pre.mcp-install-command,
+.mcp-ide-modal pre.mcp-install-command[class*="language-"] {
+    background: var(--color-bg-primary);
+    text-shadow: none;
 }
 
 .mcp-config-code code {

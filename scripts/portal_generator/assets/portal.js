@@ -1375,7 +1375,7 @@ function updatePlaceholder() {
     if (selectedTags.length > 0) {
         input.placeholder = '';
     } else {
-        input.placeholder = 'Search by keywords...';
+        input.placeholder = 'Search by keyword';
     }
 }
 
@@ -1426,8 +1426,44 @@ function filterByTags() {
     // Update results count and type
     updateResultsCount(visibleApis + visibleMcps + visibleSkills + visibleTerraform, selectedType);
 
+    // Highlight matched terms on visible cards
+    applyTagHighlights();
+
     // Update URL with current state
     updateURLState();
+}
+
+function applyTagHighlights() {
+    const cardLinks = document.querySelectorAll('.catalog-card-link');
+    cardLinks.forEach(cardLink => {
+        const targets = cardLink.querySelectorAll('.catalog-card-title, .catalog-card-description');
+        targets.forEach(target => {
+            // Restore original text from data-original or capture once
+            if (!target.dataset.originalText) {
+                target.dataset.originalText = target.textContent;
+            }
+            const original = target.dataset.originalText;
+            if (selectedTags.length === 0 || cardLink.style.display === 'none') {
+                target.textContent = original;
+                return;
+            }
+            target.innerHTML = highlightTerms(original, selectedTags);
+        });
+    });
+}
+
+function highlightTerms(text, terms) {
+    // Escape HTML once, then wrap matches in <mark>
+    let escaped = escapeHtml(text);
+    // Sort longest first to avoid partial matches eating multi-word tags
+    const sorted = terms.slice().sort((a, b) => b.length - a.length);
+    sorted.forEach(term => {
+        if (!term) return;
+        const escapedTerm = escapeHtml(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(' + escapedTerm + ')', 'gi');
+        escaped = escaped.replace(re, '<mark class="search-highlight">$1</mark>');
+    });
+    return escaped;
 }
 
 function updateURLState() {
@@ -2047,12 +2083,14 @@ function filterSidebar(query) {
     // Show/hide groups based on visible children
     var operationGroups = document.querySelectorAll('.nav-group');
     operationGroups.forEach(function(group) {
-        var groupItems = group.querySelectorAll('.nav-group-items li');
+        var groupItems = group.querySelectorAll(':scope > .nav-group-items > li');
         var hasVisible = false;
+        var visibleCount = 0;
 
         groupItems.forEach(function(item) {
             if (item.style.display !== 'none') {
                 hasVisible = true;
+                visibleCount++;
             }
         });
 
@@ -2070,6 +2108,16 @@ function filterSidebar(query) {
                     toggle.classList.add('expanded');
                 }
             }
+        }
+
+        // Update group count to reflect filtered results
+        var groupCountEl = group.querySelector(':scope > .nav-group-header .group-count');
+        if (groupCountEl) {
+            if (!groupCountEl.hasAttribute('data-total-count')) {
+                groupCountEl.setAttribute('data-total-count', groupCountEl.textContent);
+            }
+            var totalCount = groupCountEl.getAttribute('data-total-count');
+            groupCountEl.textContent = query ? '(' + visibleCount + ')' : totalCount;
         }
 
         // Apply highlighting to group names if searching
@@ -2215,10 +2263,89 @@ function openAuthModal() {
     var modal = document.getElementById('authModal');
     if (!modal) return;
     modal.style.display = 'flex';
-    // Focus trap: focus the first focusable element
+    applyAuthModalMode();
     modal._previousFocus = document.activeElement;
-    var firstFocusable = modal.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    var firstFocusable = modal.querySelector('button:not([style*="display:none"]):not([style*="display: none"]), input:not([readonly]), select:not([disabled]), textarea, [tabindex]:not([tabindex="-1"])');
     if (firstFocusable) firstFocusable.focus();
+}
+
+function applyAuthModalMode() {
+    var token = sessionStorage.getItem('anypoint_token');
+    var authenticated = !!token && !isTokenExpired();
+    var authMethod = sessionStorage.getItem('anypoint_auth_method') || 'Bearer';
+    var identity = sessionStorage.getItem('anypoint_identity') || '';
+
+    var username = document.getElementById('authUsername');
+    var password = document.getElementById('authPassword');
+    var clientId = document.getElementById('authClientId');
+    var clientSecret = document.getElementById('authClientSecret');
+    var bearerLoginBtn = document.getElementById('authBearerLoginBtn');
+    var bearerLogoutBtn = document.getElementById('authBearerLogoutBtn');
+    var oauth2LoginBtn = document.getElementById('authOauth2LoginBtn');
+    var oauth2LogoutBtn = document.getElementById('authOauth2LogoutBtn');
+    var bearerLoggedAs = document.getElementById('authBearerLoggedAs');
+    var bearerLoggedAsValue = document.getElementById('authBearerLoggedAsValue');
+    var oauth2LoggedAs = document.getElementById('authOauth2LoggedAs');
+    var oauth2LoggedAsValue = document.getElementById('authOauth2LoggedAsValue');
+    var serverSelect = document.getElementById('serverSelect');
+    var regionPreset = document.getElementById('regionPreset');
+    var regionCustom = document.getElementById('regionCustomInput');
+    var bearerTab = document.querySelector('.auth-tab[data-tab="bearer"]');
+    var oauth2Tab = document.querySelector('.auth-tab[data-tab="oauth2"]');
+
+    var SERVER_LOCKED_TOOLTIP = 'Log out and log in again to switch server.';
+    var METHOD_LOCKED_TOOLTIP = 'Log out and log in again to switch authentication method.';
+
+    if (authenticated) {
+        var activeTab = (authMethod === 'OAuth2') ? 'oauth2' : 'bearer';
+        switchAuthTab(activeTab);
+
+        // Both tabs visible (active keeps blue pill), but neither is clickable.
+        if (bearerTab) { bearerTab.disabled = true; bearerTab.style.display = ''; bearerTab.title = METHOD_LOCKED_TOOLTIP; }
+        if (oauth2Tab) { oauth2Tab.disabled = true; oauth2Tab.style.display = ''; oauth2Tab.title = METHOD_LOCKED_TOOLTIP; }
+
+        // Show the "LOGGED IN AS <user>" block, hide the credential inputs.
+        if (activeTab === 'bearer') {
+            if (bearerLoggedAsValue) bearerLoggedAsValue.textContent = identity;
+            if (bearerLoggedAs) bearerLoggedAs.style.display = '';
+            if (username) username.style.display = 'none';
+            if (password) password.style.display = 'none';
+            if (bearerLoginBtn) bearerLoginBtn.style.display = 'none';
+            if (bearerLogoutBtn) bearerLogoutBtn.style.display = '';
+        } else {
+            if (oauth2LoggedAsValue) oauth2LoggedAsValue.textContent = identity;
+            if (oauth2LoggedAs) oauth2LoggedAs.style.display = '';
+            if (clientId) clientId.style.display = 'none';
+            if (clientSecret) clientSecret.style.display = 'none';
+            if (oauth2LoginBtn) oauth2LoginBtn.style.display = 'none';
+            if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = '';
+        }
+
+        // Server combo + region inputs disabled (chevron stays, value visible).
+        if (serverSelect) { serverSelect.disabled = true; serverSelect.title = SERVER_LOCKED_TOOLTIP; }
+        if (regionPreset) { regionPreset.disabled = true; regionPreset.title = SERVER_LOCKED_TOOLTIP; }
+        if (regionCustom) { regionCustom.disabled = true; regionCustom.title = SERVER_LOCKED_TOOLTIP; }
+    } else {
+        if (bearerTab) { bearerTab.disabled = false; bearerTab.style.display = ''; bearerTab.removeAttribute('title'); }
+        if (oauth2Tab) { oauth2Tab.disabled = false; oauth2Tab.style.display = ''; oauth2Tab.removeAttribute('title'); }
+
+        if (bearerLoggedAs) bearerLoggedAs.style.display = 'none';
+        if (oauth2LoggedAs) oauth2LoggedAs.style.display = 'none';
+
+        if (username) { username.value = ''; username.style.display = ''; }
+        if (password) { password.value = ''; password.style.display = ''; }
+        if (clientId) { clientId.value = ''; clientId.style.display = ''; }
+        if (clientSecret) { clientSecret.value = ''; clientSecret.style.display = ''; }
+
+        if (bearerLoginBtn) bearerLoginBtn.style.display = '';
+        if (bearerLogoutBtn) bearerLogoutBtn.style.display = 'none';
+        if (oauth2LoginBtn) oauth2LoginBtn.style.display = '';
+        if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = 'none';
+
+        if (serverSelect) { serverSelect.disabled = false; serverSelect.removeAttribute('title'); }
+        if (regionPreset) { regionPreset.disabled = false; regionPreset.removeAttribute('title'); }
+        if (regionCustom) { regionCustom.disabled = false; regionCustom.removeAttribute('title'); }
+    }
 }
 
 function closeAuthModal() {
@@ -2256,7 +2383,6 @@ function isTokenExpired() {
 
 function updateAuthSummary() {
     var token = sessionStorage.getItem('anypoint_token');
-    var authMethod = sessionStorage.getItem('anypoint_auth_method') || '';
     var identity = sessionStorage.getItem('anypoint_identity') || '';
     var expired = isTokenExpired();
 
@@ -2328,30 +2454,6 @@ function updateAuthSummary() {
         }
     }
 
-    // Auth method
-    var methodItem = document.getElementById('authSummaryMethod');
-    var methodText = document.getElementById('authMethodText');
-    if (methodItem && methodText) {
-        if (token && authMethod) {
-            methodText.textContent = authMethod;
-            methodItem.style.display = '';
-        } else {
-            methodItem.style.display = 'none';
-        }
-    }
-
-    // Identity (username or clientId)
-    var identityItem = document.getElementById('authSummaryIdentity');
-    var identityText = document.getElementById('authIdentityText');
-    if (identityItem && identityText) {
-        if (token && identity) {
-            identityText.textContent = identity;
-            identityItem.style.display = '';
-        } else {
-            identityItem.style.display = 'none';
-        }
-    }
-
     // Region
     var regionText = document.getElementById('authRegionText');
     if (regionText) {
@@ -2373,6 +2475,7 @@ function setAuthStatus(authenticated, message, authMethod) {
         sessionStorage.setItem('anypoint_auth_method', authMethod);
     }
     if (!authenticated) {
+        sessionStorage.removeItem('anypoint_token');
         sessionStorage.removeItem('anypoint_auth_method');
         sessionStorage.removeItem('anypoint_identity');
         sessionStorage.removeItem('anypoint_token_expires_at');
@@ -2380,6 +2483,23 @@ function setAuthStatus(authenticated, message, authMethod) {
     }
 
     updateAuthSummary();
+}
+
+function logout() {
+    sessionStorage.removeItem('anypoint_token');
+    sessionStorage.removeItem('anypoint_auth_method');
+    sessionStorage.removeItem('anypoint_identity');
+    sessionStorage.removeItem('anypoint_token_expires_at');
+    stopTtlTimer();
+    updateAuthSummary();
+    var modal = document.getElementById('authModal');
+    if (modal && modal.style.display !== 'none') {
+        applyAuthModalMode();
+    }
+}
+
+function onAuthButtonClick() {
+    openAuthModal();
 }
 
 function showAuthMessage(msg, isError) {
@@ -2398,6 +2518,8 @@ async function loginBearer() {
         showAuthMessage('Please enter username and password.', true);
         return;
     }
+    var loginBtn = document.querySelector('#authTabBearer .btn-auth-login');
+    if (loginBtn) { loginBtn.disabled = true; loginBtn.classList.add('loading'); }
     var serverBase = getSelectedBaseUrl();
     try {
         var resp = await fetch(PROXY_URL, {
@@ -2434,12 +2556,15 @@ async function loginBearer() {
             if (typeof updateAllPlaygroundPanelsFromEnvVars === 'function') {
                 updateAllPlaygroundPanelsFromEnvVars();
             }
+            applyAuthModalMode();
         } else {
             var errMsg = body.message || body.error || data.body || 'Unknown error';
             showAuthMessage('Login failed: ' + errMsg, true);
         }
     } catch (e) {
         showAuthMessage('Unable to connect to the server. Please check your network connection and try again.', true);
+    } finally {
+        if (loginBtn) { loginBtn.disabled = false; loginBtn.classList.remove('loading'); }
     }
 }
 
@@ -2450,6 +2575,8 @@ async function loginOAuth2() {
         showAuthMessage('Please enter Client Id and Client Secret.', true);
         return;
     }
+    var loginBtn = document.querySelector('#authTabOauth2 .btn-auth-login');
+    if (loginBtn) { loginBtn.disabled = true; loginBtn.classList.add('loading'); }
     var serverBase = getSelectedBaseUrl();
     try {
         var resp = await fetch(PROXY_URL, {
@@ -2490,12 +2617,15 @@ async function loginOAuth2() {
             if (typeof updateAllPlaygroundPanelsFromEnvVars === 'function') {
                 updateAllPlaygroundPanelsFromEnvVars();
             }
+            applyAuthModalMode();
         } else {
             var errMsg = body.error_description || body.error || data.body || 'Unknown error';
             showAuthMessage('Token request failed: ' + errMsg, true);
         }
     } catch (e) {
         showAuthMessage('Unable to connect to the server. Please check your network connection and try again.', true);
+    } finally {
+        if (loginBtn) { loginBtn.disabled = false; loginBtn.classList.remove('loading'); }
     }
 }
 
@@ -3587,6 +3717,8 @@ function onServerChange() {
             if (customInput) customInput.style.display = 'none';
         }
     }
+    sessionStorage.setItem('anypoint_server_type', sel ? sel.value : 'us');
+    sessionStorage.setItem('anypoint_region', getSelectedRegion() || '');
     updateAuthSummary();
     updateAllServerCombos();
 }
@@ -3598,6 +3730,7 @@ function onRegionPresetChange() {
         customInput.style.display = preset.value === 'custom' ? 'block' : 'none';
         if (preset.value === 'custom') customInput.focus();
     }
+    sessionStorage.setItem('anypoint_region', getSelectedRegion() || '');
     updateAuthSummary();
     updateAllServerCombos();
 }
@@ -4308,7 +4441,7 @@ function _closeAllSkillDropdowns() {
     });
 }
 
-// Close skill dropdown on outside click
+// Close dropdowns on outside click
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.skill-split-btn')) {
         _closeAllSkillDropdowns();
@@ -6598,9 +6731,43 @@ function canProceedToNextStep(skillSlug, currentStepIndex) {
         var customInput = document.getElementById('regionCustomInput');
         if (customInput) {
             customInput.addEventListener('input', function() {
+                sessionStorage.setItem('anypoint_region', customInput.value.trim());
                 updateAuthSummary();
                 updateAllServerCombos();
             });
+        }
+
+        // Restore server/region selection from sessionStorage
+        var storedServerType = sessionStorage.getItem('anypoint_server_type');
+        if (storedServerType) {
+            var serverSelect = document.getElementById('serverSelect');
+            if (serverSelect && serverSelect.value !== storedServerType) {
+                serverSelect.value = storedServerType;
+                var regionRow = document.getElementById('serverRegionRow');
+                var showRegion = storedServerType === 'eu' || storedServerType === 'platform';
+                if (regionRow) regionRow.style.display = showRegion ? 'flex' : 'none';
+                if (showRegion) {
+                    var defaultOpt = document.getElementById('regionDefaultOption');
+                    var preset = document.getElementById('regionPreset');
+                    if (defaultOpt && preset) {
+                        var isEu = storedServerType === 'eu';
+                        defaultOpt.value = isEu ? 'eu1' : 'ca1';
+                        defaultOpt.textContent = isEu ? 'Europe (eu1)' : 'Canada (ca1)';
+                    }
+                    var storedRegion = sessionStorage.getItem('anypoint_region');
+                    if (storedRegion && preset && defaultOpt) {
+                        if (storedRegion === defaultOpt.value) {
+                            preset.value = storedRegion;
+                        } else {
+                            preset.value = 'custom';
+                            if (customInput) {
+                                customInput.style.display = 'block';
+                                customInput.value = storedRegion;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Check for existing token
@@ -8472,16 +8639,25 @@ function filterTerraformSidebar(query) {
     document.querySelectorAll('.terraform-page .nav-group.tree-level-1').forEach(function(subcat) {
         var docList = subcat.querySelector(':scope > .nav-group-items');
         var hasVisible = false;
+        var visibleCount = 0;
         if (docList) {
             var items = docList.querySelectorAll(':scope > li');
             for (var i = 0; i < items.length; i++) {
-                if (items[i].style.display !== 'none') { hasVisible = true; break; }
+                if (items[i].style.display !== 'none') { hasVisible = true; visibleCount++; }
             }
         }
         subcat.style.display = (!query || hasVisible) ? '' : 'none';
 
         var header = subcat.querySelector(':scope > .nav-group-header');
         if (header) _setTerraformGroupExpanded(header, query && hasVisible);
+
+        var countEl = subcat.querySelector(':scope > .nav-group-header .group-count');
+        if (countEl) {
+            if (!countEl.hasAttribute('data-total-count')) {
+                countEl.setAttribute('data-total-count', countEl.textContent);
+            }
+            countEl.textContent = query ? '(' + visibleCount + ')' : countEl.getAttribute('data-total-count');
+        }
     });
 
     // Show/hide top-level categories (tree-level-0) based on visible subcategories
@@ -8489,10 +8665,16 @@ function filterTerraformSidebar(query) {
     document.querySelectorAll('.terraform-page .nav-group.tree-level-0').forEach(function(cat) {
         var subcatList = cat.querySelector(':scope > .nav-group-items');
         var hasVisible = false;
+        var visibleDocCount = 0;
         if (subcatList) {
             var subcats = subcatList.querySelectorAll(':scope > .nav-group');
             for (var i = 0; i < subcats.length; i++) {
-                if (subcats[i].style.display !== 'none') { hasVisible = true; break; }
+                if (subcats[i].style.display !== 'none') { hasVisible = true; }
+            }
+            // Count actual visible docs (leaf items) across all subcategories
+            var leafItems = subcatList.querySelectorAll('.nav-group.tree-level-1 .nav-group-items > li');
+            for (var j = 0; j < leafItems.length; j++) {
+                if (leafItems[j].style.display !== 'none') visibleDocCount++;
             }
         }
         cat.style.display = (!query || hasVisible) ? '' : 'none';
@@ -8500,6 +8682,14 @@ function filterTerraformSidebar(query) {
 
         var header = cat.querySelector(':scope > .nav-group-header');
         if (header) _setTerraformGroupExpanded(header, query && hasVisible);
+
+        var countEl = cat.querySelector(':scope > .nav-group-header .group-count');
+        if (countEl) {
+            if (!countEl.hasAttribute('data-total-count')) {
+                countEl.setAttribute('data-total-count', countEl.textContent);
+            }
+            countEl.textContent = query ? '(' + visibleDocCount + ')' : countEl.getAttribute('data-total-count');
+        }
     });
 
     // Toggle empty state when nothing matches

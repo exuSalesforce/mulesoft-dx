@@ -68,14 +68,6 @@ document.addEventListener('DOMContentLoaded', function() {
         el.className = el.className.replace('language-shell', 'language-bash');
     });
     wrapTerraformCodeBlocks();
-
-    function syncPrismTheme() {
-        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        document.getElementById('prism-theme-light').disabled = isDark;
-        document.getElementById('prism-theme-dark').disabled = !isDark;
-    }
-    syncPrismTheme();
-    new MutationObserver(syncPrismTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 });
 </script>
 {% endblock %}
