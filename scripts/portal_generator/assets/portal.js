@@ -2289,10 +2289,13 @@ function applyAuthModalMode() {
     var bearerLoggedAsValue = document.getElementById('authBearerLoggedAsValue');
     var oauth2LoggedAs = document.getElementById('authOauth2LoggedAs');
     var oauth2LoggedAsValue = document.getElementById('authOauth2LoggedAsValue');
-    var serverSelect = document.getElementById('serverSelect');
-    var regionPreset = document.getElementById('regionPreset');
-    var regionCustom = document.getElementById('regionCustomInput');
-    var lockedHint = document.getElementById('authServerLockedHint');
+    var serverEditableWrapper = document.getElementById('serverEditableWrapper');
+    var serverRegionRow = document.getElementById('serverRegionRow');
+    var serverReadonly = document.getElementById('serverReadonly');
+    var serverReadonlyValue = document.getElementById('serverReadonlyValue');
+    var authTabs = document.getElementById('authTabs');
+    var methodReadonly = document.getElementById('authMethodReadonly');
+    var methodReadonlyValue = document.getElementById('authMethodReadonlyValue');
 
     if (authenticated) {
         var activeTab = (authMethod === 'OAuth2') ? 'oauth2' : 'bearer';
@@ -2318,12 +2321,16 @@ function applyAuthModalMode() {
             if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = '';
         }
 
-        if (serverSelect) serverSelect.disabled = true;
-        if (regionPreset) regionPreset.disabled = true;
-        if (regionCustom) regionCustom.disabled = true;
-        if (lockedHint) lockedHint.style.display = '';
+        if (serverEditableWrapper) serverEditableWrapper.style.display = 'none';
+        if (serverRegionRow) serverRegionRow.style.display = 'none';
+        if (serverReadonly) serverReadonly.style.display = '';
+        if (serverReadonlyValue) serverReadonlyValue.textContent = getServerReadonlyLabel();
 
-        syncEnvVarsLock();
+        if (authTabs) authTabs.style.display = 'none';
+        if (methodReadonly) methodReadonly.style.display = '';
+        if (methodReadonlyValue) {
+            methodReadonlyValue.textContent = (activeTab === 'oauth2') ? 'OAuth2 (Client)' : 'Bearer Token (User)';
+        }
     } else {
         if (bearerTabBtn) bearerTabBtn.style.display = '';
         if (oauth2TabBtn) oauth2TabBtn.style.display = '';
@@ -2341,12 +2348,20 @@ function applyAuthModalMode() {
         if (oauth2LoginBtn) oauth2LoginBtn.style.display = '';
         if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = 'none';
 
-        if (serverSelect) serverSelect.disabled = false;
-        if (regionPreset) regionPreset.disabled = false;
-        if (regionCustom) regionCustom.disabled = false;
-        if (lockedHint) lockedHint.style.display = 'none';
+        if (serverEditableWrapper) serverEditableWrapper.style.display = '';
+        // serverRegionRow visibility is controlled by onServerChange; restore by re-running it.
+        var serverSel = document.getElementById('serverSelect');
+        if (serverSel && typeof onServerChange === 'function') {
+            // Avoid clobbering stored region selection — only restore the region row visibility.
+            var regionRow = document.getElementById('serverRegionRow');
+            if (regionRow) {
+                regionRow.style.display = (serverSel.value === 'eu' || serverSel.value === 'platform') ? 'flex' : 'none';
+            }
+        }
+        if (serverReadonly) serverReadonly.style.display = 'none';
 
-        syncEnvVarsLock();
+        if (authTabs) authTabs.style.display = '';
+        if (methodReadonly) methodReadonly.style.display = 'none';
     }
 }
 
@@ -3075,30 +3090,26 @@ function renderEnvVars() {
             '<button class="btn-env-remove" onclick="removeEnvVar(this)" title="Remove">&#x2715;</button>';
         container.appendChild(row);
     });
-    syncEnvVarsLock();
 }
 
 function escapeAttr(str) {
     return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function syncEnvVarsLock() {
-    var token = sessionStorage.getItem('anypoint_token');
-    var locked = !!token && !isTokenExpired();
-    var addBtn = document.querySelector('.btn-env-add');
-    if (addBtn) addBtn.disabled = locked;
-    document.querySelectorAll('#envVarsList input').forEach(function(el) { el.disabled = locked; });
-    document.querySelectorAll('#envVarsList button').forEach(function(el) { el.disabled = locked; });
+function getServerReadonlyLabel() {
+    var type = getSelectedServerType();
+    var region = getSelectedRegion();
+    if (type === 'us') return 'anypoint.mulesoft.com (US)';
+    if (type === 'eu') return (region || 'eu1') + '.anypoint.mulesoft.com';
+    if (type === 'platform') return (region || 'ca1') + '.platform.mulesoft.com';
+    return type;
 }
 
 function addEnvVar() {
-    var token = sessionStorage.getItem('anypoint_token');
-    if (token && !isTokenExpired()) return;
     var vars = loadEnvVars();
     vars.push({name: '', value: ''});
     sessionStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(vars));
     renderEnvVars();
-    syncEnvVarsLock();
     // Focus the new name input
     var rows = document.querySelectorAll('.env-var-row');
     if (rows.length > 0) {

@@ -6427,9 +6427,9 @@ details[open] .examples-toggle-icon {
     margin-top: auto;
     height: 32px;
     padding: 6px 16px;
-    background: var(--color-bg-surface);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border-primary);
+    background: #E7F1FF;
+    color: #0052CC;
+    border: 1px solid #B3D4FF;
     border-radius: 9999px;
     font-size: var(--font-size-3);
     font-weight: var(--font-weight-medium);
@@ -6440,15 +6440,27 @@ details[open] .examples-toggle-icon {
 }
 
 .btn-auth-logout:hover {
-    background: var(--color-bg-primary);
-    border-color: var(--color-border-focus);
+    background: #D1E5FF;
+    border-color: #80BFFF;
+}
+
+[data-theme="dark"] .btn-auth-logout {
+    background: #2D7A9E;
+    color: #FFFFFF;
+    border-color: #2D7A9E;
+}
+
+[data-theme="dark"] .btn-auth-logout:hover {
+    background: #3A8CB0;
+    border-color: #3A8CB0;
 }
 
 .auth-logged-as {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2xs);
-    padding: var(--space-sm) 0;
+    gap: var(--space-xx-small);
+    padding: 0;
+    margin-top: var(--space-large);
 }
 
 .auth-logged-as-label {
@@ -6459,6 +6471,43 @@ details[open] .examples-toggle-icon {
 }
 
 .auth-logged-as-value {
+    font-size: var(--font-size-4);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-semibold);
+    word-break: break-all;
+}
+
+.server-readonly {
+    padding: 0;
+}
+
+/* Read-only mode: tighten the SERVER eyebrow -> value gap so it matches the
+   intra-block rhythm of METHOD / LOGGED IN AS (~4px). */
+.auth-section.server-section:has(.server-readonly:not([style*="display:none"])) > h4 {
+    margin-bottom: var(--space-xx-small);
+}
+
+.auth-method-readonly {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xx-small);
+    padding: 0;
+}
+
+.auth-method-readonly-label {
+    font-size: var(--font-size-2);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.auth-method-readonly-value {
+    font-size: var(--font-size-4);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.server-readonly-value {
     font-size: var(--font-size-4);
     color: var(--color-text-primary);
     font-weight: var(--font-weight-semibold);
@@ -6541,15 +6590,6 @@ details[open] .examples-toggle-icon {
 .btn-env-add:hover {
     background: #F3F4F6;
     border-color: #9CA3AF;
-}
-
-.btn-env-add:disabled,
-.btn-env-remove:disabled,
-.env-var-name:disabled,
-.env-var-value:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-    pointer-events: none;
 }
 
 .env-var-row {
