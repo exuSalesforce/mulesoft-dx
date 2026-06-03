@@ -4,12 +4,14 @@ Main portal generator orchestrator.
 Coordinates discovery, rendering, and file output to produce the complete portal.
 """
 
+import html as _html
 import json
 import os
 import shutil
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List
+from urllib.parse import quote as _urlquote
 
 from .discovery import discover_apis, discover_terraform, calculate_stats
 from .builders.tree_builder import build_operation_tree
@@ -225,17 +227,20 @@ def _render_skill_page(args: Dict) -> None:
 
 
 def _render_terraform_page(args: Dict) -> None:
-    """Worker: render a single Terraform provider page (runs in subprocess)."""
+    """Worker: render a single Terraform version page (runs in subprocess)."""
     env = create_env()
     template = env.get_template('terraform_page.html')
     provider = args['provider']
+    version = args['version']
 
     html = template.render(
         **args['asset_paths'],
         provider=provider,
-        nav_tree=provider['nav_tree'],
-        nav_tree_by_type=provider['nav_tree_by_type'],
-        home_link='../index.html',
+        version=version,
+        nav_tree=version['nav_tree'],
+        nav_tree_by_type=version['nav_tree_by_type'],
+        version_anchors=args['version_anchors'],
+        home_link='../../index.html',
         build_label=args['build_label'],
         base_url=args['base_url'],
         chrome=args.get('chrome'),
@@ -245,6 +250,7 @@ def _render_terraform_page(args: Dict) -> None:
         asset_type='terraform',
         asset_name=provider['name'],
     )
+    Path(args['output_path']).parent.mkdir(parents=True, exist_ok=True)
     Path(args['output_path']).write_text(html, encoding='utf-8')
 
 
@@ -568,22 +574,31 @@ class PortalGenerator:
                 'manifest_output_dir': str(self.output_dir / 'skills' / skill_rel),
             }))
 
-        # Terraform pages
+        # Terraform pages — one task per (provider, version)
         if self.terraform_providers:
-            total_docs = sum(p['doc_count'] for p in self.terraform_providers)
-            print(f"  ✓ Queuing {len(self.terraform_providers)} Terraform provider page(s) ({total_docs} docs)...")
+            version_count = sum(len(p['versions']) for p in self.terraform_providers)
+            total_docs = sum(
+                sum(v['doc_count'] for v in p['versions']) for p in self.terraform_providers
+            )
+            print(f"  ✓ Queuing {version_count} Terraform page(s) "
+                  f"across {len(self.terraform_providers)} provider(s) ({total_docs} docs)...")
             for provider in self.terraform_providers:
-                tasks.append((_render_terraform_page, {
-                    'provider': provider,
-                    'build_label': self.build_label,
-                    'base_url': self.base_url,
-                    'output_path': str(self.output_dir / 'terraform' / f"{provider['slug']}.html"),
-                    'chrome': {'footer': self.chrome.get('footer', ''), 'dependencies': self.chrome.get('dependencies', '')} if self.chrome else None,
-                    'repo_url': self.REPO_URL,
-                    'repo_branch': self.REPO_BRANCH,
-                    'asset_paths': self._asset_paths(1),
-                    'source_path': f"terraform/{provider['slug']}",
-                }))
+                version_anchors = self._build_version_anchors(provider)
+                provider_dir = self.output_dir / 'terraform' / provider['slug']
+                for version in provider['versions']:
+                    tasks.append((_render_terraform_page, {
+                        'provider': provider,
+                        'version': version,
+                        'version_anchors': version_anchors,
+                        'build_label': self.build_label,
+                        'base_url': self.base_url,
+                        'output_path': str(provider_dir / f"{version['version']}.html"),
+                        'chrome': {'footer': self.chrome.get('footer', ''), 'dependencies': self.chrome.get('dependencies', '')} if self.chrome else None,
+                        'repo_url': self.REPO_URL,
+                        'repo_branch': self.REPO_BRANCH,
+                        'asset_paths': self._asset_paths(2),
+                        'source_path': f"terraform/{provider['slug']}/{version['version']}",
+                    }))
 
         # Execute all tasks in parallel
         total = len(tasks)
@@ -599,6 +614,24 @@ class PortalGenerator:
                     print(f"    ❌ Error rendering {path}: {exc}")
                     raise exc
         print(f"  ✓ All {total} pages rendered.")
+
+        # Terraform redirect stubs (lightweight, not worth parallelizing)
+        if self.terraform_providers:
+            for provider in self.terraform_providers:
+                provider_dir = self.output_dir / 'terraform' / provider['slug']
+                provider_dir.mkdir(parents=True, exist_ok=True)
+                # index.html — meta-refresh to latest version
+                latest_url = f"{provider['latest_version']}.html"
+                (provider_dir / 'index.html').write_text(
+                    self._render_redirect_stub(latest_url, label=f"{provider['name']} {provider['latest_version']}"),
+                    encoding='utf-8',
+                )
+                # Legacy <slug>.html — redirect to versioned path
+                legacy_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
+                legacy_path.write_text(
+                    self._render_redirect_stub(f"{provider['slug']}/index.html", label=provider['name']),
+                    encoding='utf-8',
+                )
 
     def _generate_detail_pages(self):
         """Generate individual API pages (public APIs only) - sequential fallback."""
@@ -812,31 +845,45 @@ class PortalGenerator:
             return f"---{parts[1]}---\n\n{preamble}\n{parts[2]}"
         return preamble + "\n" + content
 
-    def _generate_terraform_pages(self):
-        """Generate Terraform provider documentation pages (one page per provider)."""
-        if not self.terraform_providers:
-            return
-        total_docs = sum(p['doc_count'] for p in self.terraform_providers)
-        print(f"  ✓ Generating {len(self.terraform_providers)} Terraform provider page(s) ({total_docs} docs)...")
 
-        template = self.env.get_template('terraform_page.html')
+    @staticmethod
+    def _build_version_anchors(provider: Dict) -> Dict[str, List[str]]:
+        """Map version -> list of doc anchors available in that version."""
+        return {
+            v['version']: [d['slug'] for d in v['docs']]
+            for v in provider['versions']
+        }
 
-        for provider in self.terraform_providers:
-            nav_tree = provider['nav_tree']
-            nav_tree_by_type = provider['nav_tree_by_type']
+    @staticmethod
+    def _render_redirect_stub(target_relative_url: str, label: str) -> str:
+        """Tiny static-site-friendly redirect page.
 
-            html = template.render(
-                **self._asset_paths(1),
-                provider=provider,
-                nav_tree=nav_tree,
-                nav_tree_by_type=nav_tree_by_type,
-                home_link='../index.html',
-                build_label=self.build_label,
-                base_url=self.base_url,
-            )
-            output_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(html)
+        Forwards via inline JS so ``location.hash`` (e.g. ``#doc-foo``) is
+        preserved, with a ``<meta http-equiv="refresh">`` fallback for clients
+        that block scripts. Both inputs are escaped: ``label`` via
+        :func:`html.escape`, ``target_relative_url`` via
+        :func:`urllib.parse.quote` for attribute-value safety.
+        """
+        url = _urlquote(target_relative_url, safe="/.-#?=&")
+        label_safe = _html.escape(label, quote=True)
+        url_attr = _html.escape(url, quote=True)
+        # JSON-encode the URL for safe injection into the inline script.
+        url_js = json.dumps(url)
+        return (
+            f"<!doctype html>\n"
+            f"<html lang=\"en\"><head>"
+            f"<meta charset=\"utf-8\">"
+            f"<meta http-equiv=\"refresh\" content=\"0; url={url_attr}\">"
+            f"<title>Redirecting to {label_safe}</title>"
+            f"<link rel=\"canonical\" href=\"{url_attr}\">"
+            f"<script>"
+            f"(function(){{var t={url_js};"
+            f"location.replace(t+(location.hash||''));}})();"
+            f"</script>"
+            f"</head><body>"
+            f"<noscript><a href=\"{url_attr}\">Continue to {label_safe}</a></noscript>"
+            f"</body></html>\n"
+        )
 
     def _generate_registry(self):
         """Generate registry.json - a document registry for APIs, Skills, and Schemas."""
