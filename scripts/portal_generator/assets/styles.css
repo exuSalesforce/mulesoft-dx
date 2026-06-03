@@ -6301,7 +6301,7 @@ details[open] .examples-toggle-icon {
     transition: all 0.2s ease;
 }
 
-.auth-tab:hover {
+.auth-tab:hover:not(:disabled) {
     background: var(--hover-bg);
 }
 
@@ -6435,7 +6435,7 @@ details[open] .examples-toggle-icon {
     font-weight: var(--font-weight-medium);
     cursor: pointer;
     transition: all 0.15s;
-    align-self: flex-end;
+    align-self: center;
     white-space: nowrap;
 }
 
@@ -6458,9 +6458,16 @@ details[open] .examples-toggle-icon {
 .auth-logged-as {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: var(--space-xx-small);
-    padding: 0;
-    margin-top: var(--space-large);
+    padding: var(--space-medium) 0 0;
+    text-align: center;
+}
+
+/* Tighten the gap between the LOGGED IN AS block and the Logout button.
+   Negative margin offsets the parent .auth-form `gap`. */
+.auth-logged-as + .btn-auth-logout {
+    margin-top: calc(var(--space-x-small) - var(--space-medium));
 }
 
 .auth-logged-as-label {
@@ -6471,59 +6478,16 @@ details[open] .examples-toggle-icon {
 }
 
 .auth-logged-as-value {
-    font-size: var(--font-size-4);
+    font-size: var(--font-size-6);
     color: var(--color-text-primary);
     font-weight: var(--font-weight-semibold);
     word-break: break-all;
-}
-
-.server-readonly {
-    padding: 0;
-}
-
-/* Read-only mode: tighten the SERVER eyebrow -> value gap so it matches the
-   intra-block rhythm of METHOD / LOGGED IN AS (~4px). */
-.auth-section.server-section:has(.server-readonly:not([style*="display:none"])) > h4 {
-    margin-bottom: var(--space-xx-small);
-}
-
-.auth-method-readonly {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xx-small);
-    padding: 0;
-}
-
-.auth-method-readonly-label {
-    font-size: var(--font-size-2);
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.auth-method-readonly-value {
-    font-size: var(--font-size-4);
-    color: var(--color-text-primary);
-    font-weight: var(--font-weight-semibold);
-}
-
-.server-readonly-value {
-    font-size: var(--font-size-4);
-    color: var(--color-text-primary);
-    font-weight: var(--font-weight-semibold);
-    word-break: break-all;
-}
-
-.auth-server-locked-hint {
-    margin: 0.5rem 0 0;
-    font-size: var(--font-size-2);
-    color: var(--color-text-secondary);
-    font-style: italic;
 }
 
 .server-select:disabled,
-.server-var-input:disabled {
-    opacity: 0.55;
+.server-var-input:disabled,
+.auth-tab:disabled {
+    opacity: 0.6;
     cursor: not-allowed;
 }
 

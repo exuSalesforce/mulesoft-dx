@@ -132,7 +132,7 @@
             <!-- Server Selection Section -->
             <div class="auth-section server-section">
                 <h4>Server</h4>
-                <div class="server-select-wrapper" id="serverEditableWrapper">
+                <div class="server-select-wrapper">
                     <select id="serverSelect" onchange="onServerChange()" class="server-select" aria-label="Select Anypoint Platform Server">
                         <option value="us">anypoint.mulesoft.com (US)</option>
                         <option value="eu">Regional (anypoint.mulesoft.com)</option>
@@ -146,22 +146,15 @@
                     </select>
                     <input type="text" id="regionCustomInput" class="server-var-input" placeholder="e.g. eu1" style="display:none" aria-label="Custom region">
                 </div>
-                <div class="server-readonly" id="serverReadonly" style="display:none">
-                    <strong class="server-readonly-value" id="serverReadonlyValue"></strong>
-                </div>
             </div>
 
-            <div class="auth-tabs" role="tablist" id="authTabs">
+            <div class="auth-tabs" role="tablist">
                 <button class="auth-tab active" role="tab" aria-selected="true" aria-controls="authTabBearer" data-tab="bearer" onclick="switchAuthTab('bearer')">
                     Bearer Token (User)
                 </button>
                 <button class="auth-tab" role="tab" aria-selected="false" aria-controls="authTabOauth2" data-tab="oauth2" onclick="switchAuthTab('oauth2')">
                     OAuth2 (Client)
                 </button>
-            </div>
-            <div class="auth-method-readonly" id="authMethodReadonly" style="display:none">
-                <span class="auth-method-readonly-label">Method</span>
-                <strong class="auth-method-readonly-value" id="authMethodReadonlyValue"></strong>
             </div>
 
             <div class="auth-tab-content active" id="authTabBearer" role="tabpanel">

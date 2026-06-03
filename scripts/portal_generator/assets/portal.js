@@ -2275,8 +2275,6 @@ function applyAuthModalMode() {
     var authMethod = sessionStorage.getItem('anypoint_auth_method') || 'Bearer';
     var identity = sessionStorage.getItem('anypoint_identity') || '';
 
-    var bearerTabBtn = document.querySelector('.auth-tab[data-tab="bearer"]');
-    var oauth2TabBtn = document.querySelector('.auth-tab[data-tab="oauth2"]');
     var username = document.getElementById('authUsername');
     var password = document.getElementById('authPassword');
     var clientId = document.getElementById('authClientId');
@@ -2289,22 +2287,24 @@ function applyAuthModalMode() {
     var bearerLoggedAsValue = document.getElementById('authBearerLoggedAsValue');
     var oauth2LoggedAs = document.getElementById('authOauth2LoggedAs');
     var oauth2LoggedAsValue = document.getElementById('authOauth2LoggedAsValue');
-    var serverEditableWrapper = document.getElementById('serverEditableWrapper');
-    var serverRegionRow = document.getElementById('serverRegionRow');
-    var serverReadonly = document.getElementById('serverReadonly');
-    var serverReadonlyValue = document.getElementById('serverReadonlyValue');
-    var authTabs = document.getElementById('authTabs');
-    var methodReadonly = document.getElementById('authMethodReadonly');
-    var methodReadonlyValue = document.getElementById('authMethodReadonlyValue');
+    var serverSelect = document.getElementById('serverSelect');
+    var regionPreset = document.getElementById('regionPreset');
+    var regionCustom = document.getElementById('regionCustomInput');
+    var bearerTab = document.querySelector('.auth-tab[data-tab="bearer"]');
+    var oauth2Tab = document.querySelector('.auth-tab[data-tab="oauth2"]');
+
+    var SERVER_LOCKED_TOOLTIP = 'Log out and log in again to switch server.';
+    var METHOD_LOCKED_TOOLTIP = 'Log out and log in again to switch authentication method.';
 
     if (authenticated) {
         var activeTab = (authMethod === 'OAuth2') ? 'oauth2' : 'bearer';
         switchAuthTab(activeTab);
-        // Hide the inactive tab so the user can't switch auth methods mid-session.
-        if (bearerTabBtn) bearerTabBtn.style.display = (activeTab === 'bearer') ? '' : 'none';
-        if (oauth2TabBtn) oauth2TabBtn.style.display = (activeTab === 'oauth2') ? '' : 'none';
 
-        // Show the "Logged in as <user>" label, hide the credential inputs.
+        // Both tabs visible (active keeps blue pill), but neither is clickable.
+        if (bearerTab) { bearerTab.disabled = true; bearerTab.style.display = ''; bearerTab.title = METHOD_LOCKED_TOOLTIP; }
+        if (oauth2Tab) { oauth2Tab.disabled = true; oauth2Tab.style.display = ''; oauth2Tab.title = METHOD_LOCKED_TOOLTIP; }
+
+        // Show the "LOGGED IN AS <user>" block, hide the credential inputs.
         if (activeTab === 'bearer') {
             if (bearerLoggedAsValue) bearerLoggedAsValue.textContent = identity;
             if (bearerLoggedAs) bearerLoggedAs.style.display = '';
@@ -2321,19 +2321,13 @@ function applyAuthModalMode() {
             if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = '';
         }
 
-        if (serverEditableWrapper) serverEditableWrapper.style.display = 'none';
-        if (serverRegionRow) serverRegionRow.style.display = 'none';
-        if (serverReadonly) serverReadonly.style.display = '';
-        if (serverReadonlyValue) serverReadonlyValue.textContent = getServerReadonlyLabel();
-
-        if (authTabs) authTabs.style.display = 'none';
-        if (methodReadonly) methodReadonly.style.display = '';
-        if (methodReadonlyValue) {
-            methodReadonlyValue.textContent = (activeTab === 'oauth2') ? 'OAuth2 (Client)' : 'Bearer Token (User)';
-        }
+        // Server combo + region inputs disabled (chevron stays, value visible).
+        if (serverSelect) { serverSelect.disabled = true; serverSelect.title = SERVER_LOCKED_TOOLTIP; }
+        if (regionPreset) { regionPreset.disabled = true; regionPreset.title = SERVER_LOCKED_TOOLTIP; }
+        if (regionCustom) { regionCustom.disabled = true; regionCustom.title = SERVER_LOCKED_TOOLTIP; }
     } else {
-        if (bearerTabBtn) bearerTabBtn.style.display = '';
-        if (oauth2TabBtn) oauth2TabBtn.style.display = '';
+        if (bearerTab) { bearerTab.disabled = false; bearerTab.style.display = ''; bearerTab.removeAttribute('title'); }
+        if (oauth2Tab) { oauth2Tab.disabled = false; oauth2Tab.style.display = ''; oauth2Tab.removeAttribute('title'); }
 
         if (bearerLoggedAs) bearerLoggedAs.style.display = 'none';
         if (oauth2LoggedAs) oauth2LoggedAs.style.display = 'none';
@@ -2348,20 +2342,9 @@ function applyAuthModalMode() {
         if (oauth2LoginBtn) oauth2LoginBtn.style.display = '';
         if (oauth2LogoutBtn) oauth2LogoutBtn.style.display = 'none';
 
-        if (serverEditableWrapper) serverEditableWrapper.style.display = '';
-        // serverRegionRow visibility is controlled by onServerChange; restore by re-running it.
-        var serverSel = document.getElementById('serverSelect');
-        if (serverSel && typeof onServerChange === 'function') {
-            // Avoid clobbering stored region selection — only restore the region row visibility.
-            var regionRow = document.getElementById('serverRegionRow');
-            if (regionRow) {
-                regionRow.style.display = (serverSel.value === 'eu' || serverSel.value === 'platform') ? 'flex' : 'none';
-            }
-        }
-        if (serverReadonly) serverReadonly.style.display = 'none';
-
-        if (authTabs) authTabs.style.display = '';
-        if (methodReadonly) methodReadonly.style.display = 'none';
+        if (serverSelect) { serverSelect.disabled = false; serverSelect.removeAttribute('title'); }
+        if (regionPreset) { regionPreset.disabled = false; regionPreset.removeAttribute('title'); }
+        if (regionCustom) { regionCustom.disabled = false; regionCustom.removeAttribute('title'); }
     }
 }
 
@@ -3094,15 +3077,6 @@ function renderEnvVars() {
 
 function escapeAttr(str) {
     return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function getServerReadonlyLabel() {
-    var type = getSelectedServerType();
-    var region = getSelectedRegion();
-    if (type === 'us') return 'anypoint.mulesoft.com (US)';
-    if (type === 'eu') return (region || 'eu1') + '.anypoint.mulesoft.com';
-    if (type === 'platform') return (region || 'ca1') + '.platform.mulesoft.com';
-    return type;
 }
 
 function addEnvVar() {
