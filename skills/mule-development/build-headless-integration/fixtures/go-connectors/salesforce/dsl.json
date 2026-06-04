@@ -1,0 +1,1407 @@
+{
+  "operations": {
+    "create": {
+      "attributeName": "",
+      "elementName": "create",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "headers": {
+          "attributeName": "headers",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "records": {
+          "attributeName": "records",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "type": {
+          "attributeName": "type",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "delete": {
+      "attributeName": "",
+      "elementName": "delete",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "headers": {
+          "attributeName": "headers",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "ids": {
+          "attributeName": "ids",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "describeGlobal": {
+      "attributeName": "",
+      "elementName": "describeGlobal",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "headers": {
+          "attributeName": "headers",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "getUserInfo": {
+      "attributeName": "",
+      "elementName": "getUserInfo",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "query": {
+      "attributeName": "",
+      "elementName": "query",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "escapeSpecialCharactersForParametersValue": {
+          "attributeName": "escapeSpecialCharactersForParametersValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "headers": {
+          "attributeName": "headers",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "parameters": {
+          "attributeName": "parameters",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "salesforceQuery": {
+          "attributeName": "salesforceQuery",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "streamingStrategy": {
+          "attributeName": "streamingStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "retrieve": {
+      "attributeName": "",
+      "elementName": "retrieve",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "headers": {
+          "attributeName": "headers",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "retrieveRequest": {
+          "attributeName": "retrieveRequest",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "type": {
+          "attributeName": "type",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "update": {
+      "attributeName": "",
+      "elementName": "update",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "headers": {
+          "attributeName": "headers",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "records": {
+          "attributeName": "records",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "type": {
+          "attributeName": "type",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "upsert": {
+      "attributeName": "",
+      "elementName": "upsert",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": true,
+      "attributes": {
+        "config-ref": {
+          "attributeName": "config-ref",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "errorMappings": {
+          "attributeName": "errorMappings",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "externalIdFieldName": {
+          "attributeName": "externalIdFieldName",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "headers": {
+          "attributeName": "headers",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "objectType": {
+          "attributeName": "objectType",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeout": {
+          "attributeName": "readTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "readTimeoutUnit": {
+          "attributeName": "readTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnectionStrategy": {
+          "attributeName": "reconnectionStrategy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "records": {
+          "attributeName": "records",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "target": {
+          "attributeName": "target",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "targetValue": {
+          "attributeName": "targetValue",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    }
+  },
+  "configurations": {
+    "sfdc-config": {
+      "attributeName": "",
+      "elementName": "sfdc-config",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": true,
+      "requiresConfig": false,
+      "attributes": {
+        "expirationPolicy": {
+          "attributeName": "expirationPolicy",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    }
+  },
+  "connectionProviders": {
+    "basic": {
+      "attributeName": "",
+      "elementName": "basic",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": false,
+      "attributes": {
+        "connectionTimeout": {
+          "attributeName": "connectionTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "connectionTimeoutUnit": {
+          "attributeName": "connectionTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "loginRequestTimeout": {
+          "attributeName": "loginRequestTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "loginRequestTimeoutUnit": {
+          "attributeName": "loginRequestTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "maxEntries": {
+          "attributeName": "maxEntries",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "objectTTL": {
+          "attributeName": "objectTTL",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "objectTTLTimeUnit": {
+          "attributeName": "objectTTLTimeUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "password": {
+          "attributeName": "password",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "proxyConfiguration": {
+          "attributeName": "proxyConfiguration",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnection": {
+          "attributeName": "reconnection",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "securityToken": {
+          "attributeName": "securityToken",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "serviceEndpoint": {
+          "attributeName": "serviceEndpoint",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "sessionId": {
+          "attributeName": "sessionId",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "tlsContext": {
+          "attributeName": "tlsContext",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "url": {
+          "attributeName": "url",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "username": {
+          "attributeName": "username",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "jwt": {
+      "attributeName": "",
+      "elementName": "jwt",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": false,
+      "attributes": {
+        "apiVersion": {
+          "attributeName": "apiVersion",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "audienceUrl": {
+          "attributeName": "audienceUrl",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "certificateAlias": {
+          "attributeName": "certificateAlias",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "connectionTimeout": {
+          "attributeName": "connectionTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "connectionTimeoutUnit": {
+          "attributeName": "connectionTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "consumerKey": {
+          "attributeName": "consumerKey",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "keyStore": {
+          "attributeName": "keyStore",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "loginRequestTimeout": {
+          "attributeName": "loginRequestTimeout",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "loginRequestTimeoutUnit": {
+          "attributeName": "loginRequestTimeoutUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "maxEntries": {
+          "attributeName": "maxEntries",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "objectTTL": {
+          "attributeName": "objectTTL",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "objectTTLTimeUnit": {
+          "attributeName": "objectTTLTimeUnit",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "principal": {
+          "attributeName": "principal",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "proxyConfiguration": {
+          "attributeName": "proxyConfiguration",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "reconnection": {
+          "attributeName": "reconnection",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "storePassword": {
+          "attributeName": "storePassword",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "tlsContext": {
+          "attributeName": "tlsContext",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        },
+        "tokenEndpoint": {
+          "attributeName": "tokenEndpoint",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    },
+    "saml": {
+      "attributeName": "",
+      "elementName": "saml",
+      "prefix": "salesforce",
+      "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+      "isWrapped": false,
+      "supportsAttributeDeclaration": true,
+      "supportsChildDeclaration": true,
+      "supportsTopLevelDeclaration": false,
+      "requiresConfig": false,
+      "attributes": {
+        "reconnection": {
+          "attributeName": "reconnection",
+          "elementName": "",
+          "prefix": "salesforce",
+          "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
+          "isWrapped": false,
+          "supportsAttributeDeclaration": true,
+          "supportsChildDeclaration": false,
+          "supportsTopLevelDeclaration": false,
+          "requiresConfig": false
+        }
+      }
+    }
+  }
+}
