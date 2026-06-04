@@ -62,7 +62,6 @@ This skill ships small bash scripts under `scripts/`. Invoke them with the `Bash
 | `scripts/list_connectors.sh [search]` | Step 3 — call `GET <RDS>/connectors?q=<search>` and write the full JSON list. Search term is optional; when omitted, returns the catalog. | `tmp/connectors-list.json` + stdout digest (one connector per line) |
 | `scripts/describe_connector.sh <connector-id> [<nickname>]` | Step 4 — call `GET <RDS>/connectors/<id>` and persist the full descriptor (operations, sources, configs, attributes, child elements). | `tmp/connector-metadata/<nickname>.json` + stdout digest |
 | `scripts/describe_operation.sh <connector-id> <operation-name> [<nickname>]` | Step 5 — call `GET <RDS>/connectors/<id>/operations/<op>` for one operation's full attribute and child-element schema. | `tmp/connector-metadata/<nickname>.<op>.json` |
-| `scripts/describe_source.sh <connector-id> <source-name> [<nickname>]` | Step 5 — same as above, but for a trigger source. | `tmp/connector-metadata/<nickname>.<source>.json` |
 | `scripts/write_spec.sh <spec-json>` | Step 7 — write the consolidated spec to disk in human-readable form (Markdown summary + JSON sidecar). | `tmp/spec/<project-name>.md` + `tmp/spec/<project-name>.json` |
 | `scripts/scaffold_project.sh <spec-json>` | Step 9 — read the approved spec and create the project skeleton (project-artifact.json, src/main/mule/<name>.xml, src/main/resources/config.yaml, yaml/config.yaml, yaml/<flow>.yaml). | `<POC_PROJECT_DIR>/...` |
 | `scripts/xml_to_reactflow.sh <project-dir>` | Step 10 — translate `src/main/mule/<name>.xml` into a `{ nodes, edges }` JSON that React Flow consumes. | `tmp/reactflow/<project-name>.json` + stdout |
@@ -211,14 +210,7 @@ bash <skill-dir>/scripts/describe_operation.sh twilio-connector \
   create20100401-accounts-messagesjson-by-account-sid twilio
 ```
 
-**If the Step 4 digest exposed a `sources[]` array AND the user's prompt mentions a cadence or event** ("every 5 minutes", "when an account is updated", "listens for new charges"), additionally describe the matching source:
-
-```bash
-bash <skill-dir>/scripts/describe_source.sh salesforce-connector \
-  modified-object-listener salesforce
-```
-
-**If the prompt is request/response shaped and does NOT mention a cadence** (the canonical POC prompt is in this category — there is no "every N seconds" — it is "make an HTTP request and get a response"), skip the source describe and use `<http:listener>` as the trigger. State the choice inline: "Trigger: HTTP listener — prompt describes a request/response shape with no cadence."
+**Trigger is fixed for this POC.** The trigger is always `<http:listener>` — Step 2 already established that this POC exposes the flow as an HTTP endpoint so the user can test it from ACB / `curl`. Do NOT call out to the Remote Design Service for connector sources; do not introspect `sources[]`. State the trigger choice inline: "Trigger: HTTP listener (POC default)." If the user's prompt explicitly asks for a cadence or event source ("every 5 minutes", "when an account is updated"), stop and tell them this POC skill is locked to HTTP-listener triggers; redirect them to `build-mule-integration`.
 
 **Present operation choice to the user via `AskUserQuestion`** when the descriptor lists multiple operations that could plausibly satisfy the user's intent (e.g., Salesforce has `query`, `query-all`, `retrieve`, `search`). Use the `description` field from the descriptor as the human-readable subtitle:
 
@@ -526,12 +518,10 @@ bash <skill-dir>/scripts/list_connectors.sh twilio
 bash <skill-dir>/scripts/describe_connector.sh salesforce-connector salesforce
 bash <skill-dir>/scripts/describe_connector.sh twilio-connector       twilio
 
-# Step 5: full schema for an operation / source
+# Step 5: full schema for an operation
 bash <skill-dir>/scripts/describe_operation.sh salesforce-connector query salesforce
 bash <skill-dir>/scripts/describe_operation.sh twilio-connector \
     create20100401-accounts-messagesjson-by-account-sid twilio
-bash <skill-dir>/scripts/describe_source.sh    salesforce-connector \
-    modified-object-listener salesforce
 
 # Step 7: write the spec from collected inputs (Markdown + JSON sidecar)
 bash <skill-dir>/scripts/write_spec.sh tmp/spec-inputs.json
