@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  HTTP-listener-triggered flow template. Replace __TOKENS__ and the flow body.
+  Adapted from: testdata/apps/salesforce-accounts-to-twilio/src/main/mule/salesforce-accounts-to-twilio.xml
+  See: references/flow-templates/README.md
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:__PREFIX__="__NAMESPACE__"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        __NAMESPACE__ __SCHEMA_LOCATION__
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <configuration-properties file="config.yaml"
+        doc:name="Configuration Properties"
+        doc:description="Loads externalized configuration from config.yaml" />
+
+    <http:listener-config name="httpListenerConfig"
+        doc:name="HTTP Listener Config"
+        doc:description="HTTP listener configuration for inbound requests">
+        <http:listener-connection host="${http.host}" port="${http.port}" />
+    </http:listener-config>
+
+    <__PREFIX__:__CONFIG_ELEMENT__ name="__CONFIG_NAME__"
+        doc:name="__PREFIX__ Config"
+        doc:description="__PREFIX__ connection (__PROVIDER_NAME__ auth)">
+        <__PREFIX__:__PROVIDER_ELEMENT__
+            __REQUIRED_FIELD__="${__CONFIG_KEY_FOR_FIELD__}" />
+    </__PREFIX__:__CONFIG_ELEMENT__>
+
+    <flow name="__FLOW_NAME__"
+        doc:name="__FLOW_DISPLAY_NAME__"
+        doc:description="__FLOW_DESCRIPTION__">
+
+        <http:listener config-ref="httpListenerConfig" path="__PATH__" allowedMethods="POST"
+            doc:name="HTTP POST __PATH__"
+            doc:description="Receives POST requests with __INPUTS__" />
+
+        <set-variable variableName="__INPUT_VAR__" value="#[payload.__INPUT_FIELD__]"
+            doc:name="Set __INPUT_VAR_DISPLAY__"
+            doc:description="Extracts the __INPUT_VAR__ from the request body" />
+
+        <__PREFIX__:__OP_ELEMENT__ config-ref="__CONFIG_NAME__"
+            doc:name="__OP_DISPLAY_NAME__"
+            doc:description="__OP_DESCRIPTION__"
+            target="__RESULT_VAR__">
+            <!-- Inline DSL children if the op needs them. Most ops only use attributes. -->
+        </__PREFIX__:__OP_ELEMENT__>
+
+        <ee:transform
+            doc:name="Build Response"
+            doc:description="Returns the result as JSON">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    success: true,
+    result: vars.__RESULT_VAR__
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-propagate type="ANY"
+                doc:name="On Error"
+                doc:description="Logs the error and returns a structured error response">
+                <logger level="ERROR"
+                    message="#[output text/plain --- 'Flow error: ' ++ (error.description default 'no description')]"
+                    doc:name="Log Error Detail"
+                    doc:description="Logs the error for debugging" />
+                <ee:transform doc:name="Error Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    error: true,
+    errorType: error.errorType,
+    description: error.description
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+
+    </flow>
+</mule>

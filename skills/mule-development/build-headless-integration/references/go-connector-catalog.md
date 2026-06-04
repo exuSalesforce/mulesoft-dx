@@ -11,9 +11,12 @@ The skill reads these directly — there is no service call to look them up.
 
 ## Inventory
 
-| Bundle | Connector | Version | Vendor | Prefix | Config element | Providers |
+| Bundle | Connector | Prefix | Config element | Providers | Source | Real-RDS loaded? |
 | --- | --- | --- | --- | --- | --- | --- |
-| `salesforce` | Salesforce | 11.4.0 | Mulesoft | `salesforce` | `salesforce:sfdc-config` | `basic`, `jwt`, `saml` |
+| `salesforce` | Salesforce | `salesforce` | `salesforce:sfdc-config` | `basic`, `jwt`, `saml` | mule-dx-mule-dev-plugin/src/test/resources/go-connectors/salesforce | only when `connector-service/config.yaml` registers it (default = no) |
+| `twilio` | Twilio | `twilio` | `twilio:config` | `account-sid-auth-token` | go-runtime/connectors/twilio/testdata | ✅ yes (default) |
+
+The "Real-RDS loaded?" column matters when running against the real RDS stack (`start_rds_stub.sh --real`). The local Node stub doesn't care — it accepts any connector name. When the real RDS stack is up, only the connectors registered in [go-runtime/services/connector-service/config.yaml](file:///Users/tzeree/Salesforce/workspace/go-runtime/services/connector-service/config.yaml) are actually loaded; calls for others come back with "connector not loaded". Twilio is the demo target for live verification because it ships a working `.wasm` and a single connection provider.
 
 When more bundles land, add a row above and copy the bundle into `fixtures/go-connectors/<name>/`. The agent's `search_connectors.sh` discovers them automatically — this table is just for human reference.
 

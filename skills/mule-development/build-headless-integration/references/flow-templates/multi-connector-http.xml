@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Two-connector HTTP-triggered flow template (Salesforce → Twilio shape).
+  Modeled directly on:
+    testdata/apps/salesforce-accounts-to-twilio/src/main/mule/salesforce-accounts-to-twilio.xml
+
+  Replace __TOKENS__ for each connector. The two connectors here use placeholder
+  prefixes __PREFIX_A__ and __PREFIX_B__; for a 3+ connector flow, add more
+  xmlns/schemaLocation/config-element groups in the same shape.
+
+  See: references/flow-templates/README.md
+-->
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:__PREFIX_A__="__NAMESPACE_A__"
+      xmlns:__PREFIX_B__="__NAMESPACE_B__"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        __NAMESPACE_A__ __SCHEMA_LOCATION_A__
+        __NAMESPACE_B__ __SCHEMA_LOCATION_B__
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <configuration-properties file="config.yaml"
+        doc:name="Configuration Properties"
+        doc:description="Loads externalized configuration from config.yaml" />
+
+    <http:listener-config name="httpListenerConfig"
+        doc:name="HTTP Listener Config"
+        doc:description="HTTP listener configuration for inbound requests">
+        <http:listener-connection host="${http.host}" port="${http.port}" />
+    </http:listener-config>
+
+    <__PREFIX_A__:__CONFIG_ELEMENT_A__ name="__CONFIG_NAME_A__"
+        doc:name="__PREFIX_A__ Config"
+        doc:description="__PREFIX_A__ connection (__PROVIDER_NAME_A__ auth)">
+        <__PREFIX_A__:__PROVIDER_ELEMENT_A__
+            __REQUIRED_FIELD_A__="${__CONFIG_KEY_FOR_FIELD_A__}" />
+    </__PREFIX_A__:__CONFIG_ELEMENT_A__>
+
+    <__PREFIX_B__:__CONFIG_ELEMENT_B__ name="__CONFIG_NAME_B__"
+        doc:name="__PREFIX_B__ Config"
+        doc:description="__PREFIX_B__ connection (__PROVIDER_NAME_B__ auth)">
+        <__PREFIX_B__:__PROVIDER_ELEMENT_B__
+            __REQUIRED_FIELD_B__="${__CONFIG_KEY_FOR_FIELD_B__}" />
+    </__PREFIX_B__:__CONFIG_ELEMENT_B__>
+
+    <flow name="__FLOW_NAME__"
+        doc:name="__FLOW_DISPLAY_NAME__"
+        doc:description="__FLOW_DESCRIPTION__">
+
+        <http:listener config-ref="httpListenerConfig" path="__PATH__" allowedMethods="POST"
+            doc:name="HTTP POST __PATH__"
+            doc:description="Receives POST requests with __INPUTS__" />
+
+        <set-variable variableName="__INPUT_VAR__" value="#[payload.__INPUT_FIELD__]"
+            doc:name="Set __INPUT_VAR_DISPLAY__"
+            doc:description="Extracts the __INPUT_VAR__ from the request body" />
+
+        <__PREFIX_A__:__OP_ELEMENT_A__ config-ref="__CONFIG_NAME_A__"
+            doc:name="__OP_DISPLAY_NAME_A__"
+            doc:description="__OP_DESCRIPTION_A__"
+            target="__RESULT_VAR_A__">
+            <!-- Inline DSL children if op A needs them. -->
+        </__PREFIX_A__:__OP_ELEMENT_A__>
+
+        <ee:transform
+            doc:name="Build __PREFIX_B__ Payload"
+            doc:description="Shapes __RESULT_VAR_A__ into the input op B expects">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    /* shape the payload op B expects */
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <__PREFIX_B__:__OP_ELEMENT_B__ config-ref="__CONFIG_NAME_B__"
+            doc:name="__OP_DISPLAY_NAME_B__"
+            doc:description="__OP_DESCRIPTION_B__"
+            target="__RESULT_VAR_B__">
+            <!-- Inline DSL children if op B needs them. -->
+        </__PREFIX_B__:__OP_ELEMENT_B__>
+
+        <ee:transform
+            doc:name="Build Response"
+            doc:description="Returns a summary of what happened">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    success: true,
+    a: vars.__RESULT_VAR_A__,
+    b: vars.__RESULT_VAR_B__
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-propagate type="ANY"
+                doc:name="On Error"
+                doc:description="Logs the error and returns a structured error response">
+                <logger level="ERROR"
+                    message="#[output text/plain --- 'Flow error: ' ++ (error.description default 'no description')]"
+                    doc:name="Log Error Detail"
+                    doc:description="Logs the error for debugging" />
+                <ee:transform doc:name="Error Response">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    error: true,
+    errorType: error.errorType,
+    description: error.description
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+
+    </flow>
+</mule>

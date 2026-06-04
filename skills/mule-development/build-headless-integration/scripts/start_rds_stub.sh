@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # Phase 1 Step 2: ensure an RDS endpoint is reachable.
 #
-# If MULE_DX_RDS_URL is set externally (real Go RDS or a user-managed instance),
-# we just probe /healthz and record the URL. Otherwise we spawn the local Node
-# stub from helpers/rds_stub.mjs and record its URL/pid.
+# Three backends, picked in order:
+#   1. --real / MULE_DX_USE_REAL_RDS=1 / MULE_DX_RDS_BACKEND=real
+#      → defer to scripts/start_real_rds.sh (which calls go-runtime/start-rds.sh).
+#        Requires Docker + go-runtime checkout. Tests against real connector binaries.
+#   2. MULE_DX_RDS_URL set externally
+#      → trust it: probe /healthz and record. Same path whether it's the real RDS,
+#        an in-process test stub, or a user-managed instance.
+#   3. (default) spawn helpers/rds_stub.mjs locally
+#      → wire-faithful Node stub that returns deterministic responses. No Docker, no
+#        go-runtime. Right for offline / Demo 2 walkthroughs.
 #
 # Idempotent: if tmp/rds.json already points at a healthy URL, nothing changes.
 #
 # Writes tmp/rds.json:
-#   { "url": "...", "managed": true|false, "pid": <num|null> }
+#   { "url": "...", "managed": true|false, "pid": <num|null>, "backend": "stub"|"external"|"real" }
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,25 +25,44 @@ mkdir -p "$TMP_DIR"
 
 RDS_JSON="$TMP_DIR/rds.json"
 
+# Backend selection: --real flag, env vars, or default (stub).
+WANT_REAL=""
+if [[ "${1:-}" == "--real" ]] || [[ "${MULE_DX_USE_REAL_RDS:-}" == "1" ]] || [[ "${MULE_DX_RDS_BACKEND:-}" == "real" ]]; then
+  WANT_REAL=1
+fi
+
 healthy() {
   local url="$1"
   curl -fsS --max-time 2 "$url/healthz" >/dev/null 2>&1
 }
 
-# Reuse path: existing record + still healthy.
+# Reuse path: existing record + still healthy + same backend the caller asked for.
+# Asking for --real when the existing record is the stub (or vice versa) forces a switch.
 if [[ -f "$RDS_JSON" ]]; then
   EXISTING_URL="$(jq -r '.url // empty' "$RDS_JSON" 2>/dev/null || true)"
-  if [[ -n "$EXISTING_URL" ]] && healthy "$EXISTING_URL"; then
+  EXISTING_BACKEND="$(jq -r '.backend // "stub"' "$RDS_JSON" 2>/dev/null || echo "stub")"
+  WANT_BACKEND="${WANT_REAL:+real}"
+  WANT_BACKEND="${WANT_BACKEND:-stub}"
+  if [[ -n "$EXISTING_URL" ]] && healthy "$EXISTING_URL" && [[ "$EXISTING_BACKEND" == "$WANT_BACKEND" || ( -z "$WANT_REAL" && "$EXISTING_BACKEND" == "external" ) ]]; then
     echo "$RDS_JSON"
     exit 0
   fi
+  # Backend mismatch — tear down the wrong-backend stub before starting the right one.
+  if [[ "$EXISTING_BACKEND" == "stub" ]] && [[ -n "$WANT_REAL" ]]; then
+    "$SKILL_DIR/scripts/stop_rds_stub.sh" >/dev/null 2>&1 || true
+  fi
+fi
+
+# Real-RDS path: defer to start_real_rds.sh (go-runtime/start-rds.sh under the hood).
+if [[ -n "$WANT_REAL" ]]; then
+  exec "$SKILL_DIR/scripts/start_real_rds.sh"
 fi
 
 # External RDS path: trust MULE_DX_RDS_URL if it answers /healthz.
 if [[ -n "${MULE_DX_RDS_URL:-}" ]]; then
   if healthy "$MULE_DX_RDS_URL"; then
     cat >"$RDS_JSON" <<JSON
-{ "url": "$MULE_DX_RDS_URL", "managed": false, "pid": null }
+{ "url": "$MULE_DX_RDS_URL", "managed": false, "pid": null, "backend": "external" }
 JSON
     echo "$RDS_JSON"
     exit 0
@@ -90,7 +116,7 @@ if ! healthy "$URL"; then
 fi
 
 cat >"$RDS_JSON" <<JSON
-{ "url": "$URL", "managed": true, "pid": $PID }
+{ "url": "$URL", "managed": true, "pid": $PID, "backend": "stub" }
 JSON
 
 echo "$RDS_JSON"

@@ -5,9 +5,15 @@
 # state-on-disk discipline, but the payload here is the bundle name + prefix
 # (not a Maven GAV).
 #
+# Bundle resolution is delegated to fetch_bundle.sh, which prefers the local
+# fixture under fixtures/go-connectors/<name>/ and falls back to RDS GET
+# /v1/connectors/<name>/{extension-model,dsl} when the local fixture is absent
+# and a real RDS is reachable. The rest of the skill only sees the resolved
+# directory path through the bundleSource field of the choice JSON.
+#
 # Usage: pick_connector.sh <nick> <bundle-name>
 #   nick         human-friendly slug the agent uses to refer to this pick (e.g. "salesforce")
-#   bundle-name  directory under fixtures/go-connectors/ (e.g. "salesforce")
+#   bundle-name  connector identifier (matches a local fixture dir or a name RDS knows)
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,10 +28,11 @@ if [[ -z "$NICK" || -z "$BUNDLE" ]]; then
   exit 2
 fi
 
-BUNDLE_DIR="$SKILL_DIR/fixtures/go-connectors/$BUNDLE"
+# Resolve via fetch_bundle.sh — local fixture wins, RDS is the fallback.
+BUNDLE_DIR="$("$SKILL_DIR/scripts/fetch_bundle.sh" "$BUNDLE")"
 EM="$BUNDLE_DIR/extension-model.json"
 if [[ ! -f "$EM" ]]; then
-  echo "no bundle at $BUNDLE_DIR (missing extension-model.json)" >&2
+  echo "fetch_bundle.sh returned $BUNDLE_DIR but extension-model.json is missing" >&2
   exit 1
 fi
 

@@ -75,8 +75,7 @@ Layout under `WS_DIR`:
 │   ├── connector-errors/
 │   │   ├── <nick>.json                           # connector-wide errorTypes whitelist
 │   │   └── <nick>.<op>.json                      # per-operation errorTypes
-│   ├── design-spec.json
-│   └── flow.svg, flow.png
+│   └── design-spec.json
 └── <projectName>/                                # the generated Mule project (open this in ACB)
     ├── .mule/project.json
     ├── .go-connectors.json
@@ -102,14 +101,17 @@ Invoke each script with the `Bash` tool. State persists under `$WS_DIR/tmp/` so 
 | Script | Purpose | Output |
 | --- | --- | --- |
 | `scripts/validate_prerequisites.sh` | Step 1 — Node, jq, curl, ACB presence | `tmp/headless-env.json` |
-| `scripts/start_rds_stub.sh` | Step 2 — ensure an RDS endpoint answers `/healthz`. Reuses `MULE_DX_RDS_URL` if set; otherwise spawns `helpers/rds_stub.mjs`. Idempotent. | `tmp/rds.json` (`{url, managed, pid}`) |
-| `scripts/stop_rds_stub.sh` | Cleanup — stops the local stub if we managed it. | — |
+| `scripts/start_rds_stub.sh [--real]` | Step 2 — ensure an RDS endpoint answers `/healthz`. Three backends, picked in order: (1) `--real` / `MULE_DX_USE_REAL_RDS=1` → defer to `start_real_rds.sh` (real Go RDS via Docker); (2) `MULE_DX_RDS_URL` set externally → trust it; (3) default → spawn `helpers/rds_stub.mjs`. Idempotent. | `tmp/rds.json` (`{url, managed, pid, backend}`) |
+| `scripts/start_real_rds.sh [--rebuild\|down]` | Bring up the real RDS + ConnectivityService stack via `go-runtime/start-rds.sh`. Requires Docker + a `go-runtime` checkout (default `~/Salesforce/workspace/go-runtime`; override via `GO_RUNTIME`). | `tmp/rds.json` (`backend: "real"`) |
+| `scripts/stop_rds_stub.sh` | Cleanup — stops the local stub if we managed it. No-op for external/real backends. | — |
+| `scripts/list_rds_connectors.sh` | Probe `GET /v1/connectors` — list which connector binaries the running ConnectivityService has loaded. Real RDS only; stub returns 404 (handled gracefully). | stdout JSON |
 | `scripts/search_connectors.sh <term>` | Step 4 — list bundles matching a term (`name`, `prefix`, or directory) from `fixtures/go-connectors/`. Format: `<bundle>\t<name>\t<version>\t<vendor>\t<prefix>` per line. | stdout |
-| `scripts/pick_connector.sh <nick> <bundle>` | Step 4 — record the picked Go bundle (resolves prefix, namespace, schemaLocation). | `tmp/connector-choices/<nick>.json` |
+| `scripts/pick_connector.sh <nick> <bundle>` | Step 4 — record the picked Go bundle (resolves prefix, namespace, schemaLocation). Resolution goes through `fetch_bundle.sh` so the bundle can come from `fixtures/go-connectors/<bundle>/` (local) or be fetched live from RDS. | `tmp/connector-choices/<nick>.json` |
+| `scripts/fetch_bundle.sh <name>` | Resolve a connector bundle to a directory. Tries `fixtures/go-connectors/<name>/` first, then falls back to `GET /v1/connectors/<name>/{extension-model,dsl}` and caches under `tmp/connector-fetched/<name>/`. Used by `pick_connector.sh`. Stub backend always returns 404 here — only the real Go RDS implements these endpoints. | resolved bundle dir on stdout |
 | `scripts/describe_connector.sh <nick>` | Step 5 — generate the rich digest + split it into the per-shape file family build-mule-integration produces (flat reference, per-op metadata, per-config metadata, error whitelists). Stdout lists each operation/source/provider with its **DSL element name** (sourced from the bundle's `dsl.json`) and required-param set. | `tmp/connector-metadata/<nick>-digest.json` (rich), `tmp/connector-metadata/<nick>.json` (flat reference), `tmp/connector-metadata/<nick>-<op>.json` (per-op), `tmp/connector-metadata/<nick>-config.json` (per-config), `tmp/connector-errors/<nick>.json` + `<nick>.<op>.json` |
 | `scripts/commit_design_spec.sh` | Step 9 — read agent-supplied design spec on stdin; merge picks into `tmp/design-spec.json` | `tmp/design-spec.json` |
 | `scripts/create_versionless_project.sh <projectDir>` | Step 9 — write `.mule/project.json`, stub `pom.xml`, `mule-artifact.json`, `.go-connectors.json`, copy bundles, `config.yaml` | project on disk |
-| `scripts/visualize_flow.sh <projectDir>` | Step 10 — render flow XML to SVG (+ PNG if `@resvg/resvg-js` present), print ASCII tree | `tmp/flow.svg` (+ `tmp/flow.png`) |
+| `scripts/validate_generated_flow_xml.sh <projectDir>` | Step 9.5 — validate the generated flow XML against the connector digests: schemaLocation pairs, known DSL element names, error types in `<on-error-propagate>`, `config-ref` resolution, `${...}` placeholders matching `config.yaml` keys. Cheap analogue of `validate_before_build.sh` from the build-mule-integration skill. | exit 0 on success; non-zero with stderr report on failure |
 
 The agent generates the flow XML inline at Step 9 — bash does not call an LLM. The connector digest in `tmp/connector-metadata/<nick>.json` is the input.
 
@@ -128,7 +130,7 @@ Phase 2 MUST NOT start until Step 8's approval gate passes explicitly.
 
 ## Workflow-wide discipline (read before Phase 1)
 
-- **One bash invocation per response when it has side effects.** `start_rds_stub.sh`, `commit_design_spec.sh`, `create_versionless_project.sh`, and `visualize_flow.sh` each run alone.
+- **One bash invocation per response when it has side effects.** `start_rds_stub.sh`, `commit_design_spec.sh`, and `create_versionless_project.sh` each run alone.
 - **Connector picks come from the static catalog only.** Demo 2 ships with the bundles under `fixtures/go-connectors/`; never invent a bundle name. If `search_connectors.sh` returns zero matches, tell the user that connector isn't available on the headless path yet — do not silently fall back to a different connector or to HTTP.
 - **The flow XML is the agent's responsibility.** Read the digest from `tmp/connector-metadata/<nick>.json`, then write `<projectDir>/src/main/mule/<projectName>.xml` directly with the `Write` tool. Use the prefix and namespace recorded in the digest. Do not invent operation names or required parameters — they're listed in the digest.
 - **No anypoint-cli-v4 calls.** This skill never shells out to it. If you find yourself reaching for `anypoint-cli-v4 dx`, you're on the wrong skill — switch to `build-mule-integration`.
@@ -148,10 +150,26 @@ If the exit code is non-zero, STOP and surface `tmp/headless-env.json:.errors[]`
 ## Step 2: Ensure RDS is reachable
 
 ```bash
-bash scripts/start_rds_stub.sh
+bash scripts/start_rds_stub.sh             # default: local Node stub
+# or:
+bash scripts/start_rds_stub.sh --real      # real Go RDS via Docker (requires go-runtime checkout)
 ```
 
-The script writes `tmp/rds.json`. If `MULE_DX_RDS_URL` is set externally and answers `/healthz`, the stub does NOT spawn — we trust the external service. Otherwise the local Node stub starts on a free port. Idempotent: re-running this step is safe.
+The script writes `tmp/rds.json` with the running endpoint. Three backends, picked in order:
+
+1. **Real** — when `--real` is passed (or `MULE_DX_USE_REAL_RDS=1`). Defers to `start_real_rds.sh` which calls [go-runtime/start-rds.sh](file:///Users/tzeree/Salesforce/workspace/go-runtime/start-rds.sh). Brings up `rds` + `connector-service` via Docker Compose. Test-connection actually authenticates against real APIs (e.g. Twilio 401 on bogus creds). First-time bring-up is slow (~minutes for `go mod vendor` + `build-wasm-modules.sh` + image build).
+2. **External** — when `MULE_DX_RDS_URL` is set and answers `/healthz`. Trust it, no spawn.
+3. **Stub** (default) — spawns the local Node stub `helpers/rds_stub.mjs` on a free port. Wire-faithful but doesn't actually authenticate. Right for offline / Demo 2 walkthroughs.
+
+After this step, `tmp/rds.json` carries `backend: "real" | "external" | "stub"`. Subsequent steps don't care which.
+
+When running against real RDS, you can confirm which connectors are loaded:
+
+```bash
+bash scripts/list_rds_connectors.sh
+```
+
+The stub returns 404 here (handled with a clear note); only real RDS implements `/v1/connectors`.
 
 ## Step 3: Identify Systems and Trigger Hints
 
@@ -253,6 +271,14 @@ After `create_versionless_project.sh` returns the project path, generate the flo
 
 **Read [`references/reference-flow-pattern.md`](references/reference-flow-pattern.md) before writing the XML.** It contains the canonical structure (modeled on `salesforce-accounts-to-twilio.xml`), a complete skeleton, and the failure modes to avoid.
 
+**Start from a template** rather than from scratch. Pick the matching shape:
+- [`references/flow-templates/scheduler.xml`](references/flow-templates/scheduler.xml) — "every N seconds" / polling
+- [`references/flow-templates/http-listener.xml`](references/flow-templates/http-listener.xml) — incoming HTTP / webhooks
+- [`references/flow-templates/connector-source.xml`](references/flow-templates/connector-source.xml) — when a connector exposes a source matching the trigger
+- [`references/flow-templates/multi-connector-http.xml`](references/flow-templates/multi-connector-http.xml) — two connectors, HTTP-triggered (Salesforce → Twilio reference shape)
+
+Substitute the `__TOKENS__` against the design spec + connector digests. Token guide lives in [`references/flow-templates/README.md`](references/flow-templates/README.md).
+
 Quick checklist for the XML the agent writes:
 
 - **Element names** come from the digest's `element=` field (sourced from `dsl.json`). Do not invent or guess — the Java connector and the Go bundle can use different element names for the same provider (e.g. `salesforce:basic-connection` vs `salesforce:basic`).
@@ -265,13 +291,27 @@ Quick checklist for the XML the agent writes:
 - **DataWeave** belongs in `<ee:transform>` blocks with CDATA. Use `output application/json` for responses, `application/x-www-form-urlencoded` for form-posting connectors.
 - **`target="<varName>"`** to capture an operation's output into a variable instead of overwriting `payload`.
 
-## Step 10: Visualize
+## Step 9.5: Validate the flow XML
 
 ```bash
-bash scripts/visualize_flow.sh ~/Salesforce/projects/headless/<projectName>
+bash scripts/validate_generated_flow_xml.sh ~/Salesforce/projects/headless/<projectName>
 ```
 
-The script prints an ASCII tree to stdout (always works) and writes `$WS_DIR/tmp/flow.svg` + `$WS_DIR/tmp/flow.png` (PNG only if `@resvg/resvg-js` is installed in `helpers/`). Surface both the ASCII tree and a reference to the PNG path to the user. Inline PNGs render in Claude Desktop.
+Catches the failure modes the old `validate_before_build.sh` used to catch at `mvn package` time:
+
+- `xmlns:foo="..."` declared without a matching `xsi:schemaLocation` pair
+- `<foo:notARealElement>` not in any digest's known element set
+- `<on-error-propagate type="FOO:NEVER_EXISTED">` — error type not in any connector's flat error list
+- `config-ref="ghost"` with no top-level `name="ghost"` element
+- `${dotted.key}` placeholder with no matching key in `config.yaml`
+
+If validation fails, fix the XML and re-run before Step 10. The generator runs offline so this is the catch-net for typos and digest drift.
+
+## Step 10: Render the flow (MCP tool — pending)
+
+A dedicated MCP tool will render the canvas inline in Claude Desktop using the same renderer ACB ships, so the agent doesn't reimplement layout/iconography. Until that tool lands, Step 10 is a no-op — the agent surfaces the project path and tells the user to open it in ACB to see the canvas.
+
+When the MCP tool ships, this step becomes a single tool call against the just-written `src/main/mule/<projectName>.xml`.
 
 After Step 10:
 
@@ -280,7 +320,7 @@ bash scripts/stop_rds_stub.sh
 rm -rf ~/Salesforce/projects/headless/tmp/
 ```
 
-Tell the user: the project is at `~/Salesforce/projects/headless/<projectName>/`. They can open it in ACB. Test Connection on the connector config will hit the running RDS endpoint.
+Tell the user: the project is at `~/Salesforce/projects/headless/<projectName>/`. They can open it in ACB to see the canvas. Test Connection on the connector config will hit the running RDS endpoint.
 
 ---
 
