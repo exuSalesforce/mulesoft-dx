@@ -25,11 +25,11 @@ if [[ "$#" -lt 1 ]]; then
   exit 2
 fi
 
-# rds.json must already exist (run start_rds_stub.sh --real first).
+# rds.json must already exist (run ensure_rds.sh first).
 RDS_JSON="$TMP_DIR/rds.json"
 if [[ ! -f "$RDS_JSON" ]]; then
   echo "no RDS endpoint recorded ($RDS_JSON missing)" >&2
-  echo "  run start_rds_stub.sh --real first" >&2
+  echo "  run \"$SKILL_DIR/scripts/ensure_rds.sh\" first" >&2
   exit 1
 fi
 

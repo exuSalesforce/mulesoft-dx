@@ -20,6 +20,7 @@
 # connector's full descriptor (extension-model + dsl + xsd) from RDS.
 set -euo pipefail
 
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS_DIR="${WS_DIR:-$HOME/Salesforce/projects/headless}"
 TMP_DIR="${TMP_DIR:-$WS_DIR/tmp}"
 
@@ -32,7 +33,7 @@ fi
 RDS_JSON="$TMP_DIR/rds.json"
 if [[ ! -f "$RDS_JSON" ]]; then
   echo "no RDS endpoint recorded ($RDS_JSON missing)" >&2
-  echo "  run start_rds_stub.sh --real first" >&2
+  echo "  run \"$SKILL_DIR/scripts/ensure_rds.sh\" first" >&2
   exit 1
 fi
 

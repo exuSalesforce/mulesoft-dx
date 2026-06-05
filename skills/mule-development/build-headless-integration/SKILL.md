@@ -30,7 +30,9 @@ Build a versionless Go-connector Mule integration via the Remote Design Service 
 **Do NOT use this skill when:**
 
 - The user wants a traditional Maven-based Mule project (use `build-mule-integration`).
-- The user names a connector that RDS doesn't have loaded yet — `bash scripts/list_rds_connectors.sh` shows the current catalog.
+- The user names a connector that RDS doesn't have loaded yet — `bash "$SKILL/scripts/list_rds_connectors.sh"` shows the current catalog.
+
+`$SKILL` here refers to the absolute path to the skill directory, recorded once at session start. The agent uses absolute invocations throughout — never `bash scripts/...` from a relative cwd.
 
 If the right path is ambiguous, ask the user once with `AskUserQuestion`: "Headless / RDS path, or traditional Maven path?"
 
@@ -38,17 +40,17 @@ If the right path is ambiguous, ask the user once with `AskUserQuestion`: "Headl
 
 ## Architecture (one paragraph)
 
-RDS is the single source of truth. `GET /v1/connectors` lists what's available; `GET /v1/connectors/{name}/descriptor` returns the three artifacts (`extension-model.json`, `dsl.json`, `extension.xsd`) atomically. The skill writes them through to `~/AnypointCodeBuilder/.cache/go/<name>/` — the same warm cache the ACB plugin's [ManifestRdsExtensionModelSource](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java) reads on project-open. The skill ships no local connector bundles; a one-time `bash scripts/seed_cache.sh --from-rds` populates the cache so subsequent picks succeed even when RDS goes down. Test-connection still goes through `POST /v1/test-connection`, the wire contract enforced by [HttpRemoteDesignServiceClient.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/designservice/rds/HttpRemoteDesignServiceClient.java). The project the skill produces matches the shape that the upgrade-to-versionless flow ([DefaultProjectPropertiesService.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/project/DefaultProjectPropertiesService.java)) writes when migrating an existing Maven project: `project-manifest.json` (sibling of `pom.xml`, name-only connector list) plus a stub `pom.xml` so today's `WorkspaceManagerImpl` can still open the project.
+RDS is the single source of truth. `GET /v1/connectors` lists what's available; `GET /v1/connectors/{name}/descriptor` returns the three artifacts (`extension-model.json`, `dsl.json`, `extension.xsd`) atomically. The skill writes them through to `$ACB_HOME/.cache/go/<name>/` (default `$HOME/AnypointCodeBuilder`) — the same warm cache the ACB plugin's `ManifestRdsExtensionModelSource` reads on project-open. The skill ships no local connector bundles; a one-time `bash "$SKILL/scripts/seed_cache.sh" --from-rds` populates the cache so subsequent picks succeed even when RDS goes down later. Test-connection goes through `POST /v1/test-connection`, the wire contract enforced by `HttpRemoteDesignServiceClient.java` in the ACB plugin. The project the skill produces matches the shape that the upgrade-to-versionless flow writes when migrating an existing Maven project: `project-manifest.json` (sibling of `pom.xml`, name-only connector list) plus a stub `pom.xml` so today's `WorkspaceManagerImpl` can still open the project.
 
 ---
 
 ## Prerequisites
 
 ```bash
-node --version          # 18+
+node --version              # 18+
 jq --version
 curl --version
-ls ~/AnypointCodeBuilder
+ls "$HOME/AnypointCodeBuilder"   # ACB install dir; override via ACB_HOME
 ```
 
 Step 1 checks all of the above and writes `$WS_DIR/tmp/headless-env.json`. Stop if it exits non-zero.
@@ -57,15 +59,15 @@ Step 1 checks all of the above and writes `$WS_DIR/tmp/headless-env.json`. Stop 
 
 ## Workspace layout
 
-All scripts share the same workspace root, controlled by the `WS_DIR` env var. **Default: `~/Salesforce/projects/headless`** — set explicitly by the script defaults so the skill never scribbles wherever the agent's `$PWD` happens to point.
+All scripts share the same workspace root, controlled by the `WS_DIR` env var. **Default: `$HOME/Salesforce/projects/headless`** — set explicitly by the script defaults so the skill never scribbles wherever the agent's `$PWD` happens to point.
 
 Layout under `WS_DIR`:
 
 ```
-~/Salesforce/projects/headless/
-├── tmp/                                          # scratch (Phase 1 state, RDS stub state, flow viz)
+$WS_DIR/                                          # default: $HOME/Salesforce/projects/headless
+├── tmp/                                          # scratch (Phase 1 state, RDS endpoint record)
 │   ├── headless-env.json
-│   ├── rds.json, rds-stub.{pid,port,log}
+│   ├── rds.json
 │   ├── connector-choices/<nick>.json             # picked bundle reference
 │   ├── connector-metadata/
 │   │   ├── <nick>-digest.json                    # rich digest (this skill's internal SoT)
@@ -83,17 +85,18 @@ Layout under `WS_DIR`:
     ├── pom.xml                                   # stub; goes away when WorkspaceManagerImpl supports no-pom
     └── src/main/{mule,resources}/...
 
-~/AnypointCodeBuilder/.cache/go/<name>/           # warm cache (extension-model + dsl + xsd)
+$ACB_HOME/.cache/go/<name>/                       # warm cache (extension-model + dsl + xsd)
+                                                  # default $ACB_HOME: $HOME/AnypointCodeBuilder
                                                   # populated by fetch_bundle.sh; read on project-open by
                                                   # ManifestRdsExtensionModelSource (no per-project bundles)
 ```
 
 The split-file shape under `connector-metadata/` and `connector-errors/` mirrors what
-[build-mule-integration's tmp/](file:///Users/tzeree/Salesforce/workspace/mulesoft-dx/skills/mule-development/build-mule-integration) produces — any tool that reads either skill's tmp/ shape works against ours too.
+the sibling `build-mule-integration` skill's `tmp/` produces — any tool that reads either skill's `tmp/` shape works against ours too.
 
-Override per session if needed: `WS_DIR=/some/other/path bash scripts/<name>.sh`. All scripts honor it. `ACB_HOME` overrides the cache root (default `~/AnypointCodeBuilder`).
+Override per session if needed: `WS_DIR=/some/other/path bash "$SKILL/scripts/<name>.sh"`. All scripts honor it. `ACB_HOME` overrides the cache root (default `$HOME/AnypointCodeBuilder`).
 
-The user opens `$WS_DIR/<projectName>/` in ACB after Step 10 — never `tmp/`. ACB then reads `project-manifest.json`, sees connector names, hits the warm `~/AnypointCodeBuilder/.cache/go/<name>/` for descriptors, and the canvas renders.
+The user opens `$WS_DIR/<projectName>/` in ACB after Step 10 — never `tmp/`. ACB then reads `project-manifest.json`, sees connector names, hits the warm `$ACB_HOME/.cache/go/<name>/` for descriptors, and the canvas renders.
 
 ---
 
@@ -103,23 +106,22 @@ Invoke each script with the `Bash` tool. State persists under `$WS_DIR/tmp/` so 
 
 | Script | Purpose | Output |
 | --- | --- | --- |
-| `scripts/validate_prerequisites.sh` | Step 1 — Node, jq, curl, ACB presence | `tmp/headless-env.json` |
-| `scripts/start_rds_stub.sh [--real]` | Step 2 — ensure an RDS endpoint answers `/healthz`. Three backends, picked in order: (1) `--real` / `MULE_DX_USE_REAL_RDS=1` → defer to `start_real_rds.sh` (real Go RDS via Docker); (2) `MULE_DX_RDS_URL` set externally → trust it; (3) default → spawn `helpers/rds_stub.mjs`. Idempotent. | `tmp/rds.json` (`{url, managed, pid, backend}`) |
-| `scripts/start_real_rds.sh [--rebuild\|down]` | Bring up the real RDS + ConnectivityService stack via `go-runtime/start-rds.sh`. Requires Docker + a `go-runtime` checkout (default `~/Salesforce/workspace/go-runtime`; override via `GO_RUNTIME`). | `tmp/rds.json` (`backend: "real"`) |
-| `scripts/stop_rds_stub.sh` | Cleanup — stops the local stub if we managed it. No-op for external/real backends. | — |
-| `scripts/list_rds_connectors.sh` | Probe `GET /v1/connectors` — list which connector binaries the running ConnectivityService has loaded. Real RDS only; stub returns 404 (handled gracefully). | stdout JSON |
+| `scripts/validate_prerequisites.sh` | Step 1 — Node, jq, curl, ACB presence + auto-bring-up of RDS via `ensure_rds.sh`. Hard-fails if RDS isn't reachable and can't be started. | `tmp/headless-env.json` |
+| `scripts/ensure_rds.sh` | Probe `MULE_DX_RDS_URL/healthz` (default `http://localhost:8090`). On miss, defers to `start_real_rds.sh`. Idempotent. | `tmp/rds.json` (`{url, managed, pid, backend: "real"}`) |
+| `scripts/start_real_rds.sh [--rebuild\|down]` | Bring up the real RDS + ConnectivityService stack via `go-runtime/start-rds.sh`. Requires Docker + a `go-runtime` checkout (default `$HOME/Salesforce/workspace/go-runtime`; override via `GO_RUNTIME`). | `tmp/rds.json` (`backend: "real"`) |
+| `scripts/list_rds_connectors.sh` | Probe `GET /v1/connectors` — list which connector binaries the running ConnectivityService has loaded, annotated with whether each is pickable (has a static `/descriptor` available). | stdout JSON |
 | `scripts/search_connectors.sh <term>` | Step 4 — list connectors matching a term, sourced from RDS `GET /v1/connectors`. Format: `<name>\t<operations-count>` per line. | stdout |
 | `scripts/pick_connector.sh <nick> <name>` | Step 4 — record the picked Go connector (resolves prefix, namespace, schemaLocation). Bundle resolution goes through `fetch_bundle.sh` (cache → RDS `/descriptor`). | `tmp/connector-choices/<nick>.json` |
-| `scripts/fetch_bundle.sh <name>` | Resolve a connector bundle to a directory. Tries `~/AnypointCodeBuilder/.cache/go/<name>/` (the same warm cache the ACB plugin reads on project-open), then `GET /v1/connectors/<name>/descriptor` (atomic 3-in-1 response) with write-through to the cache. Used by `pick_connector.sh`. Stub backend returns 404 here; only the real Go RDS implements `/descriptor`. | resolved bundle dir on stdout |
-| `scripts/seed_cache.sh <name>... \| --from-rds` | One-shot pre-warm of `~/AnypointCodeBuilder/.cache/go/<name>/` from RDS. Run once after a fresh checkout so subsequent picks succeed offline. | per-name status on stdout |
+| `scripts/fetch_bundle.sh <name>` | Resolve a connector bundle to a directory. Tries `$ACB_HOME/.cache/go/<name>/` (the same warm cache the ACB plugin reads on project-open), then `GET /v1/connectors/<name>/descriptor` (atomic 3-in-1 response) with write-through to the cache. Used by `pick_connector.sh`. | resolved bundle dir on stdout |
+| `scripts/seed_cache.sh <name>... \| --from-rds` | One-shot pre-warm of `$ACB_HOME/.cache/go/<name>/` from RDS. Run once after a fresh checkout so subsequent picks succeed offline. | per-name status on stdout |
 | `scripts/describe_connector.sh <nick>` | Step 5 — generate the rich digest + split it into the per-shape file family build-mule-integration produces (flat reference, per-op metadata, per-config metadata, error whitelists). Stdout lists each operation/source/provider with its **DSL element name** (sourced from the bundle's `dsl.json`) and required-param set. | `tmp/connector-metadata/<nick>-digest.json` (rich), `tmp/connector-metadata/<nick>.json` (flat reference), `tmp/connector-metadata/<nick>-<op>.json` (per-op), `tmp/connector-metadata/<nick>-config.json` (per-config), `tmp/connector-errors/<nick>.json` + `<nick>.<op>.json` |
 | `scripts/commit_design_spec.sh` | Step 9 — read agent-supplied design spec on stdin; merge picks into `tmp/design-spec.json` | `tmp/design-spec.json` |
-| `scripts/create_versionless_project.sh <projectDir>` | Step 9 — write `.mule/project.json`, `project-manifest.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml`. No bundles inside the project — they live in the warm cache (`~/AnypointCodeBuilder/.cache/go/<name>/`), pre-warmed during this step. | project on disk + cache pre-warmed |
+| `scripts/create_versionless_project.sh <projectDir>` | Step 9 — write `.mule/project.json`, `project-manifest.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml`. No bundles inside the project — they live in the warm cache (`$ACB_HOME/.cache/go/<name>/`), pre-warmed during this step. | project on disk + cache pre-warmed |
 | `scripts/validate_generated_flow_xml.sh <projectDir>` | Step 9.5 — validate the generated flow XML against the connector digests: schemaLocation pairs, known DSL element names, error types in `<on-error-propagate>`, `config-ref` resolution, `${...}` placeholders matching `config.yaml` keys. Cheap analogue of `validate_before_build.sh` from the build-mule-integration skill. | exit 0 on success; non-zero with stderr report on failure |
 
 The agent generates the flow XML inline at Step 9 — bash does not call an LLM. The connector digest in `tmp/connector-metadata/<nick>.json` is the input.
 
-Always invoke scripts via the absolute skill directory path supplied in the "skill is now active" message — never relative paths.
+**Always invoke scripts via absolute paths.** The skill is active under a fixed directory; record that path once at session start (e.g. `SKILL=$(pwd at activation)`) and use `"$SKILL/scripts/<name>.sh"` for every invocation. Never `bash scripts/...` from a relative-cwd assumption — the agent's `$PWD` may change between turns.
 
 ---
 
@@ -134,7 +136,9 @@ Phase 2 MUST NOT start until Step 8's approval gate passes explicitly.
 
 ## Workflow-wide discipline (read before Phase 1)
 
-- **One bash invocation per response when it has side effects.** `start_rds_stub.sh`, `commit_design_spec.sh`, and `create_versionless_project.sh` each run alone.
+- **Always invoke scripts with absolute paths.** Record the skill directory once at session start, then call `"$SKILL/scripts/<name>.sh"`. The agent's working directory can change turn to turn; relative paths break unpredictably.
+- **One bash invocation per response when it has side effects.** `ensure_rds.sh`, `commit_design_spec.sh`, and `create_versionless_project.sh` each run alone.
+- **No stub fallback.** This skill targets the real RDS only. If `validate_prerequisites.sh` can't reach RDS (and `ensure_rds.sh` can't bring it up), STOP — surface the error and let the user fix the environment. Do not invent connector data or proceed without RDS.
 - **Connector picks come from RDS only.** `search_connectors.sh` queries `GET /v1/connectors` for the live catalog. Never invent a name. If the search returns zero matches, tell the user that connector isn't loaded on RDS — do not silently fall back to a different connector or to HTTP.
 - **The flow XML is the agent's responsibility.** Read the digest from `tmp/connector-metadata/<nick>.json`, then write `<projectDir>/src/main/mule/<projectName>.xml` directly with the `Write` tool. Use the prefix and namespace recorded in the digest. Do not invent operation names or required parameters — they're listed in the digest.
 - **No anypoint-cli-v4 calls.** This skill never shells out to it. If you find yourself reaching for `anypoint-cli-v4 dx`, you're on the wrong skill — switch to `build-mule-integration`.
@@ -143,43 +147,37 @@ Phase 2 MUST NOT start until Step 8's approval gate passes explicitly.
 
 # Phase 1: Design
 
-## Step 1: Validate Prerequisites
+## Step 1: Validate Prerequisites (and bring up RDS)
 
 ```bash
-bash scripts/validate_prerequisites.sh
+bash "$SKILL/scripts/validate_prerequisites.sh"
 ```
 
-If the exit code is non-zero, STOP and surface `tmp/headless-env.json:.errors[]` to the user. Do not proceed.
+This script does three things in order:
+1. Probes Node 18+, jq, curl, and the ACB install directory.
+2. Calls `ensure_rds.sh`, which probes `MULE_DX_RDS_URL/healthz` (default `http://localhost:8090`) and — on miss — auto-brings-up the real Go RDS via `start_real_rds.sh` (which delegates to `go-runtime/start-rds.sh`).
+3. Writes `tmp/headless-env.json` with the resolved versions and `rds_status: "reachable"`.
 
-## Step 2: Ensure RDS is reachable
+**If the exit code is non-zero, STOP.** Surface `tmp/headless-env.json:.errors[]` to the user. The skill targets the real RDS only — there is no stub fallback. Common failure modes:
+- Docker not running (RDS can't be brought up automatically).
+- `go-runtime` checkout missing (override with `GO_RUNTIME=/path/to/go-runtime`).
+- Port 8090 occupied by something else (override with `MULE_DX_RDS_URL=...`).
+
+After this step, `tmp/rds.json` carries `{ "url": "...", "backend": "real" }` and subsequent steps reuse that URL via the file.
+
+## Step 2: Confirm connectors RDS has loaded (optional, recommended)
 
 ```bash
-bash scripts/start_rds_stub.sh             # default: local Node stub
-# or:
-bash scripts/start_rds_stub.sh --real      # real Go RDS via Docker (requires go-runtime checkout)
+bash "$SKILL/scripts/list_rds_connectors.sh"
 ```
 
-The script writes `tmp/rds.json` with the running endpoint. Three backends, picked in order:
-
-1. **Real** — when `--real` is passed (or `MULE_DX_USE_REAL_RDS=1`). Defers to `start_real_rds.sh` which calls [go-runtime/start-rds.sh](file:///Users/tzeree/Salesforce/workspace/go-runtime/start-rds.sh). Brings up `rds` + `connector-service` via Docker Compose. Test-connection actually authenticates against real APIs (e.g. Twilio 401 on bogus creds). First-time bring-up is slow (~minutes for `go mod vendor` + `build-wasm-modules.sh` + image build).
-2. **External** — when `MULE_DX_RDS_URL` is set and answers `/healthz`. Trust it, no spawn.
-3. **Stub** (default) — spawns the local Node stub `helpers/rds_stub.mjs` on a free port. Wire-faithful but doesn't actually authenticate. Right for offline / Demo 2 walkthroughs.
-
-After this step, `tmp/rds.json` carries `backend: "real" | "external" | "stub"`. Subsequent steps don't care which.
-
-When running against real RDS, you can confirm which connectors are loaded:
-
-```bash
-bash scripts/list_rds_connectors.sh
-```
-
-The stub returns 404 here (handled with a clear note); only real RDS implements `/v1/connectors`.
+Lists every connector binary `connector-service` loaded plus whether each has a static descriptor (and is therefore pickable). Use this when the user names a connector you don't recognize — confirm it's loaded before Step 4.
 
 ## Step 3: Identify Systems and Trigger Hints
 
 **[BLOCKER]** Do not prompt the user here. Produce prose only:
 
-1. **Systems list** — exact connector names (e.g. `salesforce`, not "CRM"). Confirm names against `bash scripts/list_rds_connectors.sh` if unsure.
+1. **Systems list** — exact connector names (e.g. `salesforce`, not "CRM"). Confirm names against `bash "$SKILL/scripts/list_rds_connectors.sh"` if unsure.
 2. **Trigger hint** — verbatim phrase from the user ("every 60 seconds", "on incoming HTTP", "when a record is created"). Do not commit to a trigger choice; that's Step 6.
 
 ## Step 4: Pick connectors
@@ -187,13 +185,13 @@ The stub returns 404 here (handled with a clear note); only real RDS implements 
 For each system in the list:
 
 ```bash
-bash scripts/search_connectors.sh <term>
+bash "$SKILL/scripts/search_connectors.sh" <term>
 ```
 
 Examine the ranked list. If exactly one row matches the user's intent, pick it:
 
 ```bash
-bash scripts/pick_connector.sh <nick> <bundle-name>
+bash "$SKILL/scripts/pick_connector.sh" <nick> <bundle-name>
 ```
 
 If multiple rows could match (different vendor / different family), ask the user via `AskUserQuestion` — never guess. The cost of one prompt is one turn; the cost of a silent wrong pick is a full Phase 2 rewrite.
@@ -203,7 +201,7 @@ If `search_connectors.sh` exits non-zero, the connector isn't loaded on RDS. **S
 ## Step 5: Describe each picked connector
 
 ```bash
-bash scripts/describe_connector.sh <nick>
+bash "$SKILL/scripts/describe_connector.sh" <nick>
 ```
 
 The stdout digest tells you:
@@ -238,7 +236,7 @@ Present prose summarizing:
 - **Trigger** (kind + parameters).
 - **Connectors picked** (each as `<bundle>` → `<prefix>:<config-element>`).
 - **Connection providers** (one per connector, with required fields the user must fill in).
-- **Project layout** that will be written: `.mule/project.json`, `project-manifest.json`, `mule-artifact.json`, stub `pom.xml`, `src/main/mule/<projectName>.xml`, `src/main/resources/config.yaml`. Connector descriptors are NOT copied into the project — they live in the warm cache at `~/AnypointCodeBuilder/.cache/go/<name>/`.
+- **Project layout** that will be written: `.mule/project.json`, `project-manifest.json`, `mule-artifact.json`, stub `pom.xml`, `src/main/mule/<projectName>.xml`, `src/main/resources/config.yaml`. Connector descriptors are NOT copied into the project — they live in the warm cache at `$ACB_HOME/.cache/go/<name>/`.
 
 Then ask: **"Proceed to build?"** Wait for an explicit affirmative before Step 9.
 
@@ -251,11 +249,11 @@ Then ask: **"Proceed to build?"** Wait for an explicit affirmative before Step 9
 The agent assembles the design spec JSON, pipes it to `commit_design_spec.sh`, then calls `create_versionless_project.sh`, then writes the flow XML.
 
 ```bash
-echo '<design-spec-json>' | bash scripts/commit_design_spec.sh
-bash scripts/create_versionless_project.sh ~/Salesforce/projects/headless/<projectName>
+echo '<design-spec-json>' | bash "$SKILL/scripts/commit_design_spec.sh"
+bash "$SKILL/scripts/create_versionless_project.sh" "$WS_DIR/<projectName>"
 ```
 
-The project directory must be a sibling of `tmp/` under `$WS_DIR` (default `~/Salesforce/projects/headless`). The agent passes the absolute path explicitly.
+The project directory must be a sibling of `tmp/` under `$WS_DIR` (default `$HOME/Salesforce/projects/headless`). The agent passes the absolute path explicitly.
 
 Design spec shape (passed on stdin to `commit_design_spec.sh`):
 
@@ -290,7 +288,7 @@ Quick checklist for the XML the agent writes:
 ## Step 9.5: Validate the flow XML
 
 ```bash
-bash scripts/validate_generated_flow_xml.sh ~/Salesforce/projects/headless/<projectName>
+bash "$SKILL/scripts/validate_generated_flow_xml.sh" "$WS_DIR/<projectName>"
 ```
 
 Catches the failure modes the old `validate_before_build.sh` used to catch at `mvn package` time:
@@ -312,18 +310,23 @@ When the MCP tool ships, this step becomes a single tool call against the just-w
 After Step 10:
 
 ```bash
-bash scripts/stop_rds_stub.sh
-rm -rf ~/Salesforce/projects/headless/tmp/
+rm -rf "$WS_DIR/tmp/"   # optional — keep tmp/ if you'll re-run the skill
 ```
 
-Tell the user: the project is at `~/Salesforce/projects/headless/<projectName>/`. They can open it in ACB to see the canvas. Test Connection on the connector config will hit the running RDS endpoint.
+Leave RDS running for ACB. Tell the user: the project is at `$WS_DIR/<projectName>/` (default `$HOME/Salesforce/projects/headless/<projectName>/`). They can open it in ACB to see the canvas. Test Connection on the connector config will hit the running RDS endpoint at `MULE_DX_RDS_URL` (default `http://localhost:8090`).
+
+To stop RDS later:
+
+```bash
+bash "$SKILL/scripts/start_real_rds.sh" down
+```
 
 ---
 
 # Failure modes the skill exists to prevent
 
 - **Reaching for anypoint-cli-v4.** This is the wrong skill if you're tempted. Switch to `build-mule-integration`.
-- **Inventing a connector name.** Only connectors RDS has loaded exist. `bash scripts/list_rds_connectors.sh` prints the live catalog. If `search_connectors.sh` finds none, stop.
+- **Inventing a connector name.** Only connectors RDS has loaded exist. `bash "$SKILL/scripts/list_rds_connectors.sh"` prints the live catalog. If `search_connectors.sh` finds none, stop.
 - **Inventing operation names or parameter names.** They live in the digest. If a parameter isn't in the digest, it's not a parameter of that operation.
 - **Skipping the approval gate.** Step 8 is non-optional. Phase 2 can be irreversible (overwrites the project dir if it exists).
-- **Pointing the skill at a real running ACB and expecting state sharing.** ACB spawns its own design-service instances; the skill's RDS stub is independent. If both want the same port, set `PORT=...` for the stub or `MULE_DX_RDS_URL=...` to share an external RDS.
+- **Proceeding without RDS.** Step 1 hard-fails if RDS isn't reachable. There is no stub fallback. If `validate_prerequisites.sh` exits non-zero, surface the error to the user and stop — do not invent connector data or skip ahead.

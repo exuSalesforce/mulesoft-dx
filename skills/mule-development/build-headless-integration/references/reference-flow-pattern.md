@@ -2,7 +2,7 @@
 
 The agent generates `src/main/mule/<projectName>.xml` at Step 9 from the connector
 digest. The shape below is the canonical pattern, modeled on
-[testdata/apps/salesforce-accounts-to-twilio/src/main/mule/salesforce-accounts-to-twilio.xml](file:///Users/tzeree/Salesforce/workspace/go-runtime/testdata/apps/salesforce-accounts-to-twilio/src/main/mule/salesforce-accounts-to-twilio.xml).
+`go-runtime/testdata/apps/salesforce-accounts-to-twilio/src/main/mule/salesforce-accounts-to-twilio.xml` (in the sibling go-runtime checkout).
 Match the structure, not the exact connectors — the connectors come from the user's picks.
 
 ## Required structural pieces (in order)
@@ -172,7 +172,7 @@ Use the reference for **structure** (namespace setup, config + flow + error-hand
 
 ## Example: Salesforce → Twilio (real)
 
-See [salesforce-accounts-to-twilio.xml](file:///Users/tzeree/Salesforce/workspace/go-runtime/testdata/apps/salesforce-accounts-to-twilio/src/main/mule/salesforce-accounts-to-twilio.xml) for a complete production-shaped example. It demonstrates:
+See `salesforce-accounts-to-twilio.xml` (in the sibling go-runtime checkout, under `testdata/apps/salesforce-accounts-to-twilio/src/main/mule/`) for a complete production-shaped example. It demonstrates:
 
 - Multi-namespace `<mule>` root with EE + HTTP + two connectors.
 - Two connector configs (Salesforce + Twilio) each with their connection-provider element.

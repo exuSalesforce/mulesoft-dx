@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-# Phase 1 Step 1: validate the headless skill toolchain.
+# Phase 1 Step 1: validate the headless skill toolchain AND ensure RDS is reachable.
 # No anypoint-cli-v4 check (this skill does not use it). No JAR check
 # (Go/RDS path bypasses MTF entirely).
+#
+# Hard requirements:
+#   - Node 18+, jq, curl, ACB install dir
+#   - Real RDS reachable at MULE_DX_RDS_URL (default http://localhost:8090).
+#     If RDS isn't up, this step auto-brings it up via ensure_rds.sh
+#     (which delegates to go-runtime/start-rds.sh under the hood). On failure,
+#     the skill cannot proceed — there is no stub fallback.
 #
 # Writes tmp/headless-env.json and exits non-zero if a hard requirement is missing.
 set -euo pipefail
@@ -9,7 +16,7 @@ set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # WS_DIR is the workspace root: scratch state lives at $WS_DIR/tmp/ and generated
 # projects live at $WS_DIR/<projectName>/. Override with WS_DIR=... if needed; the
-# default keeps everything under ~/Salesforce/projects/headless so the skill never
+# default keeps everything under $HOME/Salesforce/projects/headless so the skill never
 # scribbles wherever the agent's $PWD happens to point.
 WS_DIR="${WS_DIR:-$HOME/Salesforce/projects/headless}"
 TMP_DIR="${TMP_DIR:-$WS_DIR/tmp}"
@@ -79,6 +86,19 @@ if [[ "$NODE_VERSION" != "null" ]]; then
   fi
 fi
 
+# Ensure RDS is reachable. ensure_rds.sh probes MULE_DX_RDS_URL (default
+# http://localhost:8090) and brings up the real Go RDS via start_real_rds.sh
+# if it's not already up. There is no stub fallback — RDS is a hard requirement.
+RDS_STATUS="unknown"
+if (( ${#ERRORS[@]} == 0 )); then
+  if "$SKILL_DIR/scripts/ensure_rds.sh" >/dev/null 2>"$TMP_DIR/ensure_rds.err"; then
+    RDS_STATUS="reachable"
+  else
+    RDS_STATUS="unreachable"
+    ERRORS+=("RDS not reachable — see $TMP_DIR/ensure_rds.err for details. Manual bring-up: bash $SKILL_DIR/scripts/start_real_rds.sh")
+  fi
+fi
+
 cat >"$ENV_FILE" <<JSON
 {
   "skill_dir": "$SKILL_DIR",
@@ -91,6 +111,7 @@ cat >"$ENV_FILE" <<JSON
   "docker": $DOCKER_PATH,
   "acb_home": $ACB_HOME,
   "rds_url_env": $RDS_URL,
+  "rds_status": "$RDS_STATUS",
   "compatibility_mode": "stub-pom",
   "errors": $(printf '%s\n' "${ERRORS[@]:-}" | jq -R . | jq -s '.[] | select(. != "")' | jq -s .)
 }

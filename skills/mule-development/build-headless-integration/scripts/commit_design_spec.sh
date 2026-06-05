@@ -19,6 +19,7 @@
 # emits tmp/design-spec.json with the picks merged in.
 set -euo pipefail
 
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS_DIR="${WS_DIR:-$HOME/Salesforce/projects/headless}"
 TMP_DIR="${TMP_DIR:-$WS_DIR/tmp}"
 
@@ -61,11 +62,11 @@ for nick in "${NICKS[@]}"; do
   choice="$TMP_DIR/connector-choices/$nick.json"
   meta="$TMP_DIR/connector-metadata/$nick.json"
   if [[ ! -f "$choice" ]]; then
-    echo "missing pick: $choice (run pick_connector.sh $nick <bundle>)" >&2
+    echo "missing pick: $choice (run \"$SKILL_DIR/scripts/pick_connector.sh\" $nick <bundle>)" >&2
     exit 1
   fi
   if [[ ! -f "$meta" ]]; then
-    echo "missing describe: $meta (run describe_connector.sh $nick)" >&2
+    echo "missing describe: $meta (run \"$SKILL_DIR/scripts/describe_connector.sh\" $nick)" >&2
     exit 1
   fi
   PICKS_JSON+="$sep$(cat "$choice")"

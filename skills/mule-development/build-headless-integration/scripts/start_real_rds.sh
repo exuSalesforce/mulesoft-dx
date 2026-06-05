@@ -13,15 +13,16 @@
 #   - Real connector binaries (salesforce.wasm, http.wasm, twilio.wasm) are loaded by
 #     connector-service; calls hit those binaries via gRPC
 #
-# Usage:
-#   bash scripts/start_real_rds.sh                # build + up + wait
-#   bash scripts/start_real_rds.sh --rebuild      # force rebuild
-#   bash scripts/start_real_rds.sh down           # docker compose down
+# Usage (always invoke via absolute path):
+#   bash "$SKILL/scripts/start_real_rds.sh"             # build + up + wait
+#   bash "$SKILL/scripts/start_real_rds.sh" --rebuild   # force rebuild
+#   bash "$SKILL/scripts/start_real_rds.sh" down        # docker compose down
 #
 # Override the go-runtime checkout path via GO_RUNTIME env var; default is
 # $HOME/Salesforce/workspace/go-runtime.
 set -euo pipefail
 
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS_DIR="${WS_DIR:-$HOME/Salesforce/projects/headless}"
 TMP_DIR="${TMP_DIR:-$WS_DIR/tmp}"
 mkdir -p "$TMP_DIR"
@@ -51,9 +52,8 @@ if [[ "${1:-}" != "down" ]]; then
     echo "Real RDS prerequisites missing:" >&2
     printf '  - %s\n' "${PREREQS_MISSING[@]}" >&2
     echo >&2
-    echo "Workarounds:" >&2
-    echo "  - run the skill against the local Node stub instead (omit --real / unset MULE_DX_USE_REAL_RDS)" >&2
-    echo "  - or install the missing tools and rerun" >&2
+    echo "Install the missing tools and rerun. The skill targets the real RDS only;" >&2
+    echo "there is no stub fallback." >&2
     exit 1
   fi
 fi

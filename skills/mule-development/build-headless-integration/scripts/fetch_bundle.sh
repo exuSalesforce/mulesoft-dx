@@ -14,8 +14,8 @@
 #
 # This skill ships no local connector bundles. To pre-populate the cache from
 # RDS once (so subsequent picks succeed offline), run:
-#   bash scripts/seed_cache.sh <name>...
-#   bash scripts/seed_cache.sh --from-rds   # all connectors RDS reports
+#   bash "$SKILL_DIR/scripts/seed_cache.sh" <name>...
+#   bash "$SKILL_DIR/scripts/seed_cache.sh" --from-rds   # all connectors RDS reports
 #
 # Usage: fetch_bundle.sh <name>
 #   exits 0 with the resolved directory path on stdout
@@ -52,12 +52,11 @@ fi
 RDS_JSON="$TMP_DIR/rds.json"
 if [[ ! -f "$RDS_JSON" ]]; then
   echo "no warm cache for '$NAME' and no RDS endpoint recorded ($RDS_JSON missing)" >&2
-  echo "  run start_rds_stub.sh --real first, or run seed_cache.sh once when RDS is reachable" >&2
+  echo "  run \"$SKILL_DIR/scripts/ensure_rds.sh\" first to bring up RDS" >&2
   exit 1
 fi
 
 URL="$(jq -r .url "$RDS_JSON")"
-BACKEND="$(jq -r '.backend // "unknown"' "$RDS_JSON")"
 
 DESC_TMP="$(mktemp)"
 trap 'rm -f "$DESC_TMP"' EXIT
@@ -66,7 +65,7 @@ CODE="$(curl -sS -w '%{http_code}' -o "$DESC_TMP" --max-time 30 "$URL/v1/connect
 case "$CODE" in
   200) ;;
   404)
-    echo "$URL/v1/connectors/$NAME/descriptor returned 404 — connector '$NAME' not on RDS (backend=$BACKEND)" >&2
+    echo "$URL/v1/connectors/$NAME/descriptor returned 404 — connector '$NAME' not loaded on RDS" >&2
     exit 1
     ;;
   *)

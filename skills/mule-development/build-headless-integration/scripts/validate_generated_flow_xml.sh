@@ -12,7 +12,8 @@
 #   4. Every config-ref="name" resolves to a top-level element by that name
 #   5. Every ${dotted.key} placeholder has a matching key in config.yaml
 #
-# Usage: bash scripts/validate_generated_flow_xml.sh <projectDir>
+# Usage (always invoke via absolute path):
+#   bash "$SKILL/scripts/validate_generated_flow_xml.sh" <projectDir>
 #   exit 0 on success, non-zero on first batch of issues with a clear stderr report
 set -euo pipefail
 

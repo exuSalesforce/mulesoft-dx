@@ -29,7 +29,7 @@ fi
 
 CHOICE="$TMP_DIR/connector-choices/$NICK.json"
 if [[ ! -f "$CHOICE" ]]; then
-  echo "no pick at $CHOICE (run pick_connector.sh first)" >&2
+  echo "no pick at $CHOICE (run \"$SKILL_DIR/scripts/pick_connector.sh\" first)" >&2
   exit 1
 fi
 

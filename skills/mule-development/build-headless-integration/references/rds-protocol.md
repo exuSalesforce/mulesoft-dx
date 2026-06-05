@@ -2,23 +2,19 @@
 
 The skill (and ACB) talk to RDS over plain HTTP/JSON. The contract is fixed by:
 
-- Java client: [HttpRemoteDesignServiceClient.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/designservice/rds/HttpRemoteDesignServiceClient.java)
-- Container manager: [LocalRdsContainer.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/designservice/rds/LocalRdsContainer.java)
-- Selection logic: [RemoteDesignServiceClientFactory.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/designservice/rds/RemoteDesignServiceClientFactory.java)
-- Persisted-config canvas path: [PersistedConnection.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/designservice/connectivity/PersistedConnection.java)
-- Real RDS server (Go): [go-runtime/dservicex/](file:///Users/tzeree/Salesforce/workspace/go-runtime/dservicex/)
-- End-to-end tests: [testConnection.integration.test.ts](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-vscode/src/test-emulator/test/testConnection.integration.test.ts) (stub) and [testConnectionRds.integration.test.ts](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-vscode/src/test-emulator/test/testConnectionRds.integration.test.ts) (live)
+- Java client: `HttpRemoteDesignServiceClient.java` in the `mule-dx-mule-dev-plugin`
+- Container manager: `LocalRdsContainer.java` in the same plugin
+- Selection logic: `RemoteDesignServiceClientFactory.java`
+- Real RDS server (Go): `dservicex/` in the sibling go-runtime checkout
+- End-to-end test: `testConnectionRds.integration.test.ts` in `mule-dx-mule-dev-vscode/src/test-emulator/test/`
 
-Two implementations satisfy the contract:
-
-- The local Node stub at [helpers/rds_stub.mjs](../helpers/rds_stub.mjs) — wire-faithful, deterministic, no Docker, no connector binaries. Default backend.
-- The real Go RDS at [go-runtime/dservicex/](file:///Users/tzeree/Salesforce/workspace/go-runtime/dservicex/) — proxies to ConnectivityService over gRPC; calls hit real connector binaries (`*.wasm` modules) and exercise the actual auth flow. Brought up via [go-runtime/start-rds.sh](file:///Users/tzeree/Salesforce/workspace/go-runtime/start-rds.sh).
+The skill targets the **real Go RDS only**. There is no stub. RDS is brought up by `go-runtime/start-rds.sh` (a Docker Compose wrapper) and proxies test-connection calls to ConnectivityService over gRPC; calls hit real connector binaries (`*.wasm` modules) and exercise actual auth flows.
 
 ## Endpoints
 
 ### `GET /healthz`
 
-Liveness probe. `LocalRdsContainer` polls this before any call and during container startup.
+Liveness probe. `LocalRdsContainer` polls this before any call and during container startup. The skill's `ensure_rds.sh` polls it too.
 
 Request: no body.
 
@@ -45,7 +41,7 @@ Request body:
 }
 ```
 
-- `connector` — the connector name. For the real RDS this is the name registered in [connector-service/config.yaml](file:///Users/tzeree/Salesforce/workspace/go-runtime/services/connector-service/config.yaml); the stub doesn't validate this. The Java side calls it "connector prefix".
+- `connector` — the connector name registered in `connector-service/config.yaml` in the go-runtime checkout. The Java side calls it "connector prefix".
 - `providerName` — the selected connection provider (`basic`, `jwt`, `account-sid-auth-token`, etc.). Empty string when no provider was chosen.
 - `config` — flat field-name → value map. Field names match the provider's required parameters (see the skill's connector digest).
 
@@ -61,13 +57,11 @@ or
 { "success": false, "message": "401 Unauthorized" }
 ```
 
-The stub echoes a marker (`validated-by-stub-rds:<connector>:<provider>`) on success so test harnesses can assert the round-trip happened. Real RDS surfaces whatever the underlying connector returned.
-
 5xx responses are infrastructure faults (e.g. RDS up but `connector-service` unreachable); the Java client maps these to `result.exception` rather than treating them as rejected credentials. Real RDS specifically returns 502 when ConnectivityService is unreachable.
 
-### `GET /v1/connectors` (real RDS only)
+### `GET /v1/connectors`
 
-Lists which connector binaries the running ConnectivityService has loaded. Added in [go-runtime ed5e196](file:///Users/tzeree/Salesforce/workspace/go-runtime/). The stub returns 404 for this endpoint.
+Lists which connector binaries the running ConnectivityService has loaded.
 
 Request: no body.
 
@@ -82,11 +76,11 @@ Response (200):
 }
 ```
 
-The skill's [scripts/list_rds_connectors.sh](../scripts/list_rds_connectors.sh) calls this and treats 404 as "stub mode, here's an empty list".
+The skill's `scripts/list_rds_connectors.sh` calls this and annotates each entry with whether the connector is "pickable" (has a `/descriptor` available — see below).
 
 ### `GET /v1/connectors/{name}/descriptor`
 
-Return all three design-time artifacts (extension-model + dsl + xsd) in **one atomic response**. This is the endpoint the ACB plugin's [`ManifestRdsExtensionModelSource`](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java) and the skill's [`fetch_bundle.sh`](../scripts/fetch_bundle.sh) call. One request per connector, no consistency window across three files. Local Node stub does NOT implement this — only the real Go RDS does.
+Return all three design-time artifacts (extension-model + dsl + xsd) in **one atomic response**. This is the endpoint the ACB plugin's `ManifestRdsExtensionModelSource` and the skill's `fetch_bundle.sh` call. One request per connector, no consistency window across three files.
 
 ```http
 GET /v1/connectors/twilio/descriptor
@@ -104,7 +98,7 @@ GET /v1/connectors/<unknown>/descriptor
 → 404 { "error": "bundle not found", "connector": "<name>", "file": "extension-model.json" }
 ```
 
-Bundle layout under `--bundles-dir` (both supported transparently):
+Bundle layout under `--bundles-dir` (all three forms supported transparently):
 
 ```
 <bundles-dir>/<name>/extension-model.json              ← canonical (curated bundle)
@@ -114,52 +108,22 @@ Bundle layout under `--bundles-dir` (both supported transparently):
 
 In docker-compose, RDS mounts `../connectors:/bundles:ro` so the unchanged `connectors/<name>/testdata/` layout works directly.
 
-### `GET /v1/connectors/{name}/extension-model` (per-artifact, secondary)
+### `GET /v1/connectors/{name}/extension-model` and `GET /v1/connectors/{name}/dsl` (per-artifact, secondary)
 
-Return the connector's `extension-model.json` only. Useful for clients that already have the other two artifacts cached and want to refresh just the model. Use `/descriptor` for the standard render path.
-
-```http
-GET /v1/connectors/twilio/extension-model
-→ 200 application/json   <full ExtensionModel JSON>
-
-GET /v1/connectors/<unknown>/extension-model
-→ 404 { "error": "bundle not found", "connector": "<name>", "file": "extension-model.json" }
-```
-
-Bundle layout under `--bundles-dir` (both supported transparently):
-
-```
-<bundles-dir>/<name>/extension-model.json              ← canonical (curated bundle)
-<bundles-dir>/<name>/testdata/extension-model.json     ← go-runtime/connectors/<name>/testdata/
-<bundles-dir>/<name>/testdata/extension-model-go.json  ← Go-emitted filename, fallback
-```
-
-In docker-compose, RDS mounts `../connectors:/bundles:ro` so the unchanged `connectors/<name>/testdata/` layout works directly.
-
-### `GET /v1/connectors/{name}/dsl` (per-artifact, secondary)
-
-Return the connector's `dsl.json` only. Same caveat as `/extension-model` above — `/descriptor` is the standard path.
-
-```http
-GET /v1/connectors/twilio/dsl
-→ 200 application/json   <full DSL JSON>
-
-GET /v1/connectors/<unknown>/dsl
-→ 404 { "error": "bundle not found", "connector": "<name>", "file": "dsl.json" }
-```
+Return the connector's `extension-model.json` or `dsl.json` only. Useful for clients that already have the other artifacts cached and want to refresh just one. **Use `/descriptor` for the standard render path** — it's atomic.
 
 ## Future endpoints (recommendations for the RDS team)
 
 ### `GET /v1/exchange/search?q=<term>` (lower priority)
 
-Proxy to Anypoint Exchange to discover Java/MTF connectors that aren't on the Go path yet. Useful when headless flows want to use a connector RDS doesn't host. Could also live in `dservicex` as an HTTP-only addition. Same shape as the old `anypoint-cli-v4 exchange asset list --type extension --search <term>`:
+Proxy to Anypoint Exchange to discover Java/MTF connectors that aren't on the Go path yet. Useful when headless flows want to use a connector RDS doesn't host. Could live in `dservicex` as an HTTP-only addition. Same shape as `anypoint-cli-v4 exchange asset list --type extension --search <term>`:
 
 ```http
 GET /v1/exchange/search?q=salesforce
 → 200 { "results": [ { "groupId": "com.mulesoft.connectors", "assetId": "mule-salesforce-connector", "version": "11.4.0", ... }, ... ] }
 ```
 
-Lower priority because the skill's static catalog covers Demo 2's needs.
+Lower priority because the connectors RDS already loads cover Demo 2.
 
 ## Mode selection (env)
 
@@ -171,23 +135,13 @@ Lower priority because the skill's static catalog covers Demo 2's needs.
 | `MULE_DX_RDS_URL` | `mule.dx.rds.url` | `http://localhost:8090` | Base URL for the dev HTTP client. |
 | `MULE_DX_RDS_COMPOSE_DIR` | `mule.dx.rds.compose.dir` | _unset_ | Directory holding `docker-compose.yaml`; if set and `/healthz` is unreachable, `LocalRdsContainer` runs `docker compose up -d --build rds connector-service`. |
 
-The skill also reads its own:
+The skill also reads:
 
 | Env var | Effect |
 | --- | --- |
-| `MULE_DX_USE_REAL_RDS=1` or `MULE_DX_RDS_BACKEND=real` | `start_rds_stub.sh` defers to the real-RDS path instead of spawning the Node stub. Equivalent to passing `--real`. |
-| `GO_RUNTIME` | Override the go-runtime checkout path (default: `~/Salesforce/workspace/go-runtime`). Read by `start_real_rds.sh`. |
+| `GO_RUNTIME` | Override the go-runtime checkout path (default: `$HOME/Salesforce/workspace/go-runtime`). Read by `start_real_rds.sh`. |
 
-## Backend choice — when to use which
-
-| Backend | Pros | Cons | When to use |
-| --- | --- | --- | --- |
-| **Node stub** (default) | No Docker, no go-runtime, instant startup, deterministic | Doesn't actually authenticate — accepts any creds with username+password | Demo walkthroughs, offline development, CI without Docker |
-| **Real RDS** (`--real`) | Real auth flow, real connector binaries, 401 on bad creds | Needs Docker + go-runtime checkout + WASM build (~minutes on first run) | End-to-end verification, debugging real connector behavior |
-
-Both satisfy the same wire contract — the skill produces the same project regardless of which is running. Switching is a single env var.
-
-## Architecture (real RDS)
+## Architecture
 
 ```
 ACB (MULE_DX_RDS_MODE=dev, MULE_DX_RDS_URL=http://localhost:8090)
@@ -205,38 +159,13 @@ ACB (MULE_DX_RDS_MODE=dev, MULE_DX_RDS_URL=http://localhost:8090)
 3. `docker compose up -d rds connector-service` — RDS on `:8090`, ConnectivityService on `:50051`.
 4. Polls `/healthz` until ready.
 
+The skill's `ensure_rds.sh` calls `start_real_rds.sh` (which delegates to the above) when RDS isn't already reachable.
+
 ## Telling ACB about a running RDS
 
 ```bash
-# stub:
-export MULE_DX_RDS_MODE=dev
-export MULE_DX_RDS_URL=http://127.0.0.1:<stub-port>     # see tmp/rds.json
-
-# real RDS (always 8090):
 export MULE_DX_RDS_MODE=dev
 export MULE_DX_RDS_URL=http://localhost:8090
 ```
 
 In ACB's launch config or via `~/.zshenv` so VS Code inherits it.
-
-## Local stub: extra debug endpoints
-
-### `GET /_requests`
-
-Returns the JSON-serialized request log. Useful for asserting the skill produced the right envelope.
-
-```json
-[
-  { "at": "2026-06-04T00:38:49.470Z", "body": { "connector": "salesforce", "providerName": "basic", "config": { "username": "...", "password": "..." } } }
-]
-```
-
-The real RDS does not have this endpoint.
-
-## Stub policy (deterministic)
-
-- Any value in `config` equal to literal `"FAIL"` → `{ success: false, message: "rejected by stub: a config value was \"FAIL\"" }`. Used to demo the failure UX.
-- Missing `username` or `password` in `config` → `{ success: false, message: "rejected by stub: missing required credentials" }`.
-- Otherwise → `{ success: true, message: "validated-by-stub-rds:<connector>:<providerName-or-default>" }`.
-
-The marker `validated-by-stub-rds:...` is what proves the round-trip happened — same pattern as `RDS_MARKER` in [testConnection.integration.test.ts](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-vscode/src/test-emulator/test/testConnection.integration.test.ts).

@@ -42,7 +42,7 @@ if [[ -z "$PROJECT_DIR" ]]; then
 fi
 
 if [[ ! -f "$SPEC_FILE" ]]; then
-  echo "no design spec at $SPEC_FILE (run commit_design_spec.sh first)" >&2
+  echo "no design spec at $SPEC_FILE (run \"$SKILL_DIR/scripts/commit_design_spec.sh\" first)" >&2
   exit 1
 fi
 

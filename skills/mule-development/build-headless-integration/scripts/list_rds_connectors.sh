@@ -10,40 +10,30 @@
 #
 # Output: each connector on its own line:
 #   <name>\t<operations-count>\t<pickable: yes|no>
-#
-# Stub backend (no /v1/connectors at all) prints a clear note and an empty list.
 set -euo pipefail
 
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS_DIR="${WS_DIR:-$HOME/Salesforce/projects/headless}"
 TMP_DIR="${TMP_DIR:-$WS_DIR/tmp}"
 RDS_JSON="$TMP_DIR/rds.json"
 
 if [[ ! -f "$RDS_JSON" ]]; then
-  echo "no RDS endpoint recorded — run start_rds_stub.sh first" >&2
+  echo "no RDS endpoint recorded — run \"$SKILL_DIR/scripts/ensure_rds.sh\" first" >&2
   exit 1
 fi
 
 URL="$(jq -r .url "$RDS_JSON")"
-BACKEND="$(jq -r '.backend // "unknown"' "$RDS_JSON")"
 
-# Pull the binary list. Stub returns 404 here.
+# Pull the binary list.
 RESPONSE="$(curl -sS -w '\n%{http_code}' --max-time 5 "$URL/v1/connectors" 2>/dev/null || true)"
 BODY="$(printf '%s\n' "$RESPONSE" | sed '$d')"
 CODE="$(printf '%s\n' "$RESPONSE" | tail -1)"
 
-case "$CODE" in
-  200) ;;
-  404)
-    echo "/v1/connectors not implemented at $URL (backend=$BACKEND)" >&2
-    echo "  this is expected for the local stub; only the real Go RDS implements it" >&2
-    exit 0
-    ;;
-  *)
-    echo "unexpected response $CODE from $URL/v1/connectors" >&2
-    [[ -n "$BODY" ]] && echo "  body: $BODY" >&2
-    exit 1
-    ;;
-esac
+if [[ "$CODE" != "200" ]]; then
+  echo "unexpected response $CODE from $URL/v1/connectors" >&2
+  [[ -n "$BODY" ]] && echo "  body: $BODY" >&2
+  exit 1
+fi
 
 # Per-name HEAD to /descriptor distinguishes pickable from binary-only. Cheap —
 # RDS doesn't actually serve the body for HEAD, just the status code.
