@@ -46,6 +46,28 @@ Match the structure, not the exact connectors — the connectors come from the u
 - `vars.<name>` reads variables; `payload` reads the message; `p('<dotted.key>')` reads `config.yaml`.
 - For loops: `vars.accounts map ((account) -> ...) joinBy "\n"`.
 
+## Trigger options
+
+Pick exactly one. The skeleton below shows HTTP listener — for the others, swap the trigger block.
+
+**Scheduler** (no top-level config; replaces the `<http:listener-config>` and the `<http:listener>` line in the skeleton):
+```xml
+<scheduler doc:name="Every N seconds"
+    doc:description="Polls <SOMETHING> on a fixed schedule">
+    <scheduling-strategy>
+        <fixed-frequency frequency="60000" timeUnit="MILLISECONDS"/>
+    </scheduling-strategy>
+</scheduler>
+```
+
+**Connector source** (no top-level config; replaces the `<http:listener-config>` and the `<http:listener>` line). Use when a picked connector exposes a source matching the trigger hint — read the digest's `sources:` line:
+```xml
+<<PREFIX>:<SOURCE_ELEMENT> config-ref="<connectorScope>Config"
+    <SOURCE_REQUIRED_ATTR>="<SOURCE_REQUIRED_VALUE>"
+    doc:name="<Source Display Name>"
+    doc:description="Listens for <SOMETHING>"/>
+```
+
 ## Skeleton (fill in connector specifics from the digest)
 
 ```xml
@@ -129,10 +151,24 @@ output application/json
 
 - **Element names come from the digest, not from training memory.** Java connectors and Go connectors can use different element names for the same concept. The digest's `element=` field is authoritative.
 - **`doc:name` and `doc:description` on every meaningful element.** Reference flow has them on configs, sources, operations, transforms, error handlers, and inner steps. They're how the canvas labels nodes; missing them shows up as raw XML element names in ACB.
+- **Attribute names in the flow XML come from the digest's `parameterModels[].name` (or its dsl.json `attributes` keys).** Use the parameter `name` verbatim as the XML attribute name. Do not pluralize, camel-fy, or invent variants based on training memory. **Worked example:** the Go salesforce `query` op declares one required input named `soql`. The XML must read `soql="#[...]"`. Common wrong forms — pulled straight from the Java-connector schema or from training data — are `salesforceQuery`, `query`, `<salesforce:salesforce-query>...</salesforce:salesforce-query>` (child element). All three would fail the canvas validator. Only `soql=` is correct here.
 - **Required parameter names come from the digest.** If a parameter isn't in the digest's `required=` list, it's not required — and if it's not in the digest at all, it's not a parameter of that operation.
 - **`${...}` placeholders must match `config.yaml` keys.** The skill writes `config.yaml` with `<connectorScope>.<provider>.<field>` keys; flow XML must reference them in the same shape.
 - **`xsi:schemaLocation` pairs match declared namespaces.** Every `xmlns:<prefix>` needs a matching pair. Missing pairs cause schema-aware editor features in ACB to silently fail.
 - **One `<error-handler>` per flow.** Without it, errors propagate raw to the caller.
+
+## Java vs Go connector schema differences
+
+The reference XML linked below targets the **Java** Salesforce/Twilio connectors. Our Go-connector flow XML cannot match it byte-for-byte because the two connectors expose different element / attribute names for the same concepts:
+
+| Concept | Java connector form | Go connector form (digest authoritative) |
+|---|---|---|
+| Salesforce basic provider element | `<salesforce:basic-connection>` | `<salesforce:basic>` |
+| Twilio provider element | `<twilio:account-sid-auth-token-connection>` | `<twilio:account-sid-auth-token>` |
+| Salesforce `query` SOQL parameter | child element `<salesforce:salesforce-query>` | flat attribute `soql=` |
+| Twilio "create message" op element | `<twilio:create20100401-accounts-messagesjson-by-account-sid>` (kebab) | `<twilio:create20100401AccountsMessagesjsonByAccountSid>` (camel) |
+
+Use the reference for **structure** (namespace setup, config + flow + error-handler shape, DataWeave conventions). Use the **digest** (and `dsl.json`) for **names** (elements, attributes, providers).
 
 ## Example: Salesforce → Twilio (real)
 
@@ -142,3 +178,5 @@ See [salesforce-accounts-to-twilio.xml](file:///Users/tzeree/Salesforce/workspac
 - Two connector configs (Salesforce + Twilio) each with their connection-provider element.
 - HTTP-triggered flow with input extraction, two operations chained via `target=`, two `<ee:transform>` blocks (one for the connector input, one for the response), and a complete error handler.
 - DataWeave for both `application/x-www-form-urlencoded` (Twilio) and `application/json` (response).
+
+**Reminder:** the reference uses the Java-connector forms (`salesforce:basic-connection`, child `<salesforce:salesforce-query>`, kebab-case Twilio op name). When generating against Go connectors, follow the table above — the forms differ.

@@ -6,7 +6,7 @@ This document inventories what the skill does today, what it produces, and what 
 
 ## Goal in one sentence
 
-Generate a versionless ([`.mule/project.json`](references/project-json-schema.md))-driven Mule integration project that:
+Generate a versionless `.mule/project.json`-driven Mule integration project that:
 
 1. Picks Go connectors live from RDS — `GET /v1/connectors` for the catalog, `GET /v1/connectors/{name}/descriptor` for each pick. The skill ships no local connector bundles.
 2. Talks to RDS over plain HTTP for `test-connection` and connector metadata.
@@ -70,11 +70,10 @@ Reference contracts:
 
 ### References (docs)
 
-- [`references/reference-flow-pattern.md`](references/reference-flow-pattern.md) — canonical flow shape modeled on `salesforce-accounts-to-twilio.xml`
-- [`references/flow-templates/`](references/flow-templates/) — concrete starting points: `scheduler.xml`, `http-listener.xml`, `connector-source.xml`, `multi-connector-http.xml`, `README.md` (token guide)
-- [`references/project-json-schema.md`](references/project-json-schema.md) — `.mule/project.json` shape + Java platform follow-up needed
+- [`references/reference-flow-pattern.md`](references/reference-flow-pattern.md) — canonical flow skeleton + trigger variants (HTTP listener, scheduler, connector source) + Java-vs-Go connector form table + failure-mode rules. Sole input the agent reads when generating flow XML.
 - [`references/rds-protocol.md`](references/rds-protocol.md) — RDS wire contract, mode selection, future endpoints
-- [`references/go-connector-catalog.md`](references/go-connector-catalog.md) — note: live catalog is now `bash scripts/list_rds_connectors.sh`; this doc is a static reference of what RDS typically ships
+
+Three earlier docs were removed in 2026-06-05 cleanup (after observing `build-mule-integration` ships no flow templates either): `flow-templates/` (5 files — duplicated the skeleton already in `reference-flow-pattern.md`), `project-json-schema.md` (the script `create_versionless_project.sh` owns the format; the doc rotted when the script changed), `go-connector-catalog.md` (deprecated by `bash scripts/list_rds_connectors.sh`).
 
 ### Connectors live on RDS (current `connector-service/config.yaml`)
 
@@ -110,11 +109,13 @@ The skill ships no local copies. `bash scripts/list_rds_connectors.sh` against a
 
 - **Operation child-element schema** — current digest models `parameterModels[]` as flat attributes. Connectors that genuinely need nested elements (`<db:my-sql-connection>` carrying `<db:connection-properties>`) won't render correctly. Affects DB / OAuth-callback flows. Not a problem for `salesforce`/`twilio`/`http` bundles today.
 
+- **Validator: per-element attribute coverage** — `validate_generated_flow_xml.sh` checks element names, error types, config-refs, and `${...}` placeholders, but **not whether each `<prefix:element attrX=...>` uses an attribute name the descriptor's dsl.json declares for that element**. Real bug this missed (2026-06-05): the agent wrote `<salesforce:query salesforceQuery="...">` (Java-connector attribute name) when the Go connector's descriptor declared `soql`. ACB rendered it as an invalid attribute warning. Fix: add a 6th check that for every `<prefix:elementName>` in the flow XML, every attribute except `doc:*` / `xmlns:*` / `xsi:*` must appear in `dsl.json:operations[<name>].attributes` (or `connectionProviders[*]` / `configurations[*]`). Same lookup the canvas does on render.
+
 - **MCP flow renderer** — Step 10 in [`SKILL.md`](SKILL.md) is a no-op placeholder. A separate MCP tool will render the canvas inline in Claude Desktop using the same renderer ACB ships (see [`mule-dx-mule-dev-vscode/src/views/xml-editor/`](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-vscode/src/views/xml-editor/) for what to reuse). Removed the previous SVG/PNG rasterizer (`scripts/visualize_flow.sh` + `helpers/visualize.mjs` + `@resvg/resvg-js`) — it produced thumbnail-quality boxes that the real MCP renderer will obsolete on day one. When the MCP tool ships, Step 10 becomes a single tool call against the just-written `src/main/mule/<projectName>.xml`.
 
 ### Java platform
 
-These are tracked in [`references/project-json-schema.md`](references/project-json-schema.md) — none block Demo 2 because of the stub `pom.xml` fallback:
+None of the items below block Demo 2 — the stub `pom.xml` fallback covers them:
 
 - [`DefaultProjectDescriptor.java`](file:///Users/tzeree/Salesforce/workspace/mule-dx-vscode/mule-dx-platform/src/main/java/org/mule/dx/platform/internal/api/impl/DefaultProjectDescriptor.java) — add `muleVersion`, `javaVersion`, `dependencies`, `sharedLibraries`. Make `source` nullable. (Connectors are NOT a field here — they live in the sibling `project-manifest.json`, read by [ProjectManifest.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/project/ProjectManifest.java).)
 - [`DefaultProjectDescriptorBuilder.java`](file:///Users/tzeree/Salesforce/workspace/mule-dx-vscode/mule-dx-platform/src/main/java/org/mule/dx/platform/internal/api/impl/DefaultProjectDescriptorBuilder.java) — builder methods for new fields.
@@ -166,16 +167,8 @@ build-headless-integration/
 │   ├── rds_stub.mjs
 │   └── validate_flow.mjs
 └── references/                                 docs the agent reads
-    ├── reference-flow-pattern.md
-    ├── project-json-schema.md
-    ├── rds-protocol.md
-    ├── go-connector-catalog.md
-    └── flow-templates/
-        ├── README.md                           token substitution guide
-        ├── scheduler.xml
-        ├── http-listener.xml
-        ├── connector-source.xml
-        └── multi-connector-http.xml
+    ├── reference-flow-pattern.md               flow skeleton + trigger variants + rules
+    └── rds-protocol.md                         RDS wire contract (operator-facing)
 ```
 
 ## Running the real RDS stack (full bring-up)

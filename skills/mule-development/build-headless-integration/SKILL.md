@@ -273,15 +273,7 @@ Design spec shape (passed on stdin to `commit_design_spec.sh`):
 
 After `create_versionless_project.sh` returns the project path, generate the flow XML with the `Write` tool against the cached connector digest.
 
-**Read [`references/reference-flow-pattern.md`](references/reference-flow-pattern.md) before writing the XML.** It contains the canonical structure (modeled on `salesforce-accounts-to-twilio.xml`), a complete skeleton, and the failure modes to avoid.
-
-**Start from a template** rather than from scratch. Pick the matching shape:
-- [`references/flow-templates/scheduler.xml`](references/flow-templates/scheduler.xml) — "every N seconds" / polling
-- [`references/flow-templates/http-listener.xml`](references/flow-templates/http-listener.xml) — incoming HTTP / webhooks
-- [`references/flow-templates/connector-source.xml`](references/flow-templates/connector-source.xml) — when a connector exposes a source matching the trigger
-- [`references/flow-templates/multi-connector-http.xml`](references/flow-templates/multi-connector-http.xml) — two connectors, HTTP-triggered (Salesforce → Twilio reference shape)
-
-Substitute the `__TOKENS__` against the design spec + connector digests. Token guide lives in [`references/flow-templates/README.md`](references/flow-templates/README.md).
+**Read [`references/reference-flow-pattern.md`](references/reference-flow-pattern.md) before writing the XML.** It contains the canonical skeleton, the trigger-block variants (HTTP listener, scheduler, connector source), the Java-vs-Go connector form table, and the failure-mode rules. Generate the XML directly from the digest using that doc — there are no separate template files to fill in.
 
 Quick checklist for the XML the agent writes:
 
