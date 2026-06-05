@@ -2,25 +2,15 @@
 
 The Remote Design Service is the POC's authoritative source for connector
 metadata. It runs as a Docker container next to the agent (default
-`http://localhost:8090`) and exposes a small, **versionless** REST API: every
-response describes the connector's *current* shape, with no `version` field
-anywhere. Consumers — the bundled scripts in this skill, plus any future MCP
-app — never have to negotiate connector versions.
+`http://localhost:8090`) and exposes a small versioned REST API under the
+`/v1` prefix. Health is unversioned at `/healthz`.
 
-This file documents what each script expects to receive, anchored against
-real Mule 4 connector metadata captured locally under
-`/Users/sathishpaul.leo/projects/mulesoft-dx/tmp/connector-metadata/`.
-
----
-
-## Versionless principle
-
-- No `version`, `groupId`, `assetId`, or `gav` fields anywhere in any response.
-- Connectors are addressed by a stable `id` slug (`salesforce`, `twilio`,
-  `http`, …). The id is the only handle the scripts need.
-- The shape of a connector — its operations, sources, configs, attributes,
-  child elements — IS the connector for the purposes of this POC. Whatever
-  the RDS returns is what the scaffolder writes into the project.
+The RDS does **not** invent or normalize anything — it forwards the
+descriptor JSON shipped inside each connector package (`connectors/<name>/descriptor/`
+in the go-runtime repo) verbatim. The descriptor format is the same one
+produced by Mule's extension-model exporter, so consumers that already
+understand `org.mule.runtime.api.meta.model.ExtensionModel` can read these
+responses directly.
 
 ---
 
@@ -28,12 +18,13 @@ real Mule 4 connector metadata captured locally under
 
 ### `GET /healthz`
 
-Used by `check_env.sh` to confirm the service is reachable.
+Used by `check_env.sh` to confirm the service is reachable. **Unversioned
+— no `/v1` prefix.**
 
 **Response (200):**
 
 ```json
-{ "status": "ok" }
+{ "ready": true }
 ```
 
 Any non-2xx response counts as a failure; `check_env.sh` writes the curl
@@ -41,224 +32,167 @@ exit code and body to `tmp/poc-env.json` and exits 1.
 
 ---
 
-### `GET /connectors`
+### `GET /v1/connectors`
 
-Used by `list_connectors.sh`. List the connectors the RDS knows about,
-optionally filtered by query string.
-
-**Query parameters:**
-
-| Param | Required | Description |
-|---|---|---|
-| `q` | optional | case-insensitive substring filter against `id`, `name`, `namespace`, `description` |
+Used by `list_connectors.sh`. Lists every connector the RDS knows about.
+**No query parameters** — the RDS does not implement server-side
+filtering. Filter client-side after fetching.
 
 **Response (200):**
 
 ```json
-[
-  {
-    "id": "salesforce",
-    "name": "Salesforce Connector",
-    "namespace": "salesforce",
-    "description": "Salesforce CRM connector — sObject CRUD, SOQL/SOSL, bulk and metadata APIs."
-  },
-  {
-    "id": "twilio",
-    "name": "Twilio Connector",
-    "namespace": "twilio",
-    "description": "Send SMS, WhatsApp messages, and place voice calls via Twilio's REST APIs."
-  },
-  {
-    "id": "http",
-    "name": "HTTP Connector",
-    "namespace": "http",
-    "description": "HTTP listener and request connectors."
-  }
-]
-```
-
-**Empty result:** `[]` (200, not 404).
-
-`list_connectors.sh` writes the array verbatim to `tmp/connectors-list.json`
-and prints a digest in the form `<id>  <name>  <namespace>` (one connector
-per line, padded for readability).
-
----
-
-### `GET /connectors/<id>`
-
-Used by `describe_connector.sh`. Return the full descriptor for one connector.
-
-The response merges everything the agent needs to choose a config / operation
-without a follow-up call: namespace info, the list of operation names, the
-list of source names, and the configs each with the **fully-expanded
-connection-provider schema** inlined (attributes + childElements). This is
-what the predecessor skill called "config-detail" — folded into the connector
-descriptor here so the POC doesn't need a second round trip.
-
-**Response (200) — Salesforce example:**
-
-```json
 {
-  "id": "salesforce",
-  "name": "Salesforce Connector",
-  "namespace": {
-    "prefix": "salesforce",
-    "namespace": "http://www.mulesoft.org/schema/mule/salesforce",
-    "schemaLocation": "http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd"
-  },
-  "operations": [
-    "create", "delete", "query", "queryAll", "retrieve", "search", "update", "upsert"
-  ],
-  "sources": [
-    "deleted-object-listener",
-    "modified-object-listener",
-    "new-object-listener",
-    "replay-channel-listener",
-    "replay-topic-listener"
-  ],
-  "configs": [
-    {
-      "name": "sfdc-config",
-      "prefix": "salesforce",
-      "elementName": "sfdc-config",
-      "attributes": [
-        { "attributeName": "name", "required": true,
-          "description": "The identifier of this element used to reference it in other components" }
-      ],
-      "childElements": [],
-      "connectionProviders": [
-        {
-          "name": "basic",
-          "prefix": "salesforce",
-          "elementName": "basic-connection",
-          "attributes": [
-            { "attributeName": "username",      "required": true },
-            { "attributeName": "password",      "required": true },
-            { "attributeName": "securityToken", "required": false },
-            { "attributeName": "url",           "required": false }
-          ],
-          "childElements": []
-        }
-      ]
-    }
-  ],
-  "errorTypes": [
-    "MULE:ANY", "MULE:CONNECTIVITY",
-    "SALESFORCE:CONNECTIVITY", "SALESFORCE:INSUFFICIENT_PERMISSIONS",
-    "SALESFORCE:INVALID_INPUT", "SALESFORCE:INVALID_RESPONSE", "SALESFORCE:NOT_FOUND",
-    "SALESFORCE:RETRY_EXHAUSTED", "SALESFORCE:TIMEOUT", "SALESFORCE:UNAVAILABLE"
+  "connectors": [
+    { "name": "salesforce", "operations": ["create", "delete", "describeSObject", "getUserInfo", "query", "retrieve", "update", "upsert"] },
+    { "name": "http",       "operations": ["listener"] },
+    { "name": "twilio",     "operations": ["createMessage", "sendMessage", "..."] }
   ]
 }
 ```
 
-**Response (200) — Twilio example:**
+The list response carries only the connector name and an array of
+operation names. There is no `description`, `namespace`, or `version`
+field at this level — those live in the per-connector descriptor.
 
-```json
-{
-  "id": "twilio",
-  "name": "Twilio Connector",
-  "namespace": { "prefix": "twilio" },
-  "operations": [
-    "create20100401-accounts-messagesjson-by-account-sid"
-  ],
-  "sources": [
-    "on-new-message-listener"
-  ],
-  "configs": [
-    {
-      "name": "config",
-      "prefix": "twilio",
-      "elementName": "config",
-      "attributes": [],
-      "childElements": [],
-      "connectionProviders": [
-        {
-          "name": "account-sid-auth-token",
-          "prefix": "twilio",
-          "elementName": "account-sid-auth-token-connection",
-          "attributes": [
-            { "attributeName": "username", "required": true },
-            { "attributeName": "password", "required": true },
-            { "attributeName": "baseUri",  "required": false, "defaultValue": "https://api.twilio.com" }
-          ],
-          "childElements": []
-        }
-      ]
-    }
-  ],
-  "errorTypes": [ "MULE:ANY", "TWILIO:CONNECTIVITY", "TWILIO:RETRY_EXHAUSTED" ]
-}
-```
-
-**Response (404):** `{ "error": "connector not found", "id": "<id>" }` —
-`describe_connector.sh` echoes the body and exits 1.
-
-`describe_connector.sh` writes the response verbatim to
-`tmp/connector-metadata/<nickname>.json` and prints a digest matching the
-existing `build-mule-integration` skill's shape so downstream agents see the
-key fields without a follow-up `jq` call.
+`list_connectors.sh` unwraps the `.connectors` array, filters
+client-side on the optional CLI argument, persists the filtered array to
+`tmp/connectors-list.json`, and prints a digest.
 
 ---
 
-### `GET /connectors/<id>/operations/<operation-name>`
+### `GET /v1/connectors/<name>/descriptor`
 
-Used by `describe_operation.sh`. Return the full per-operation schema —
-attributes, child elements, error types.
+Used by `describe_connector.sh`. Returns the full descriptor for one
+connector — the three artifacts the scaffolder needs:
 
-**Response (200) — Salesforce `query`:**
+- **`extensionModel`** — the connector's full extension-model JSON.
+  Operations live at `extensionModel.configurations[].operationModels[]`,
+  connection providers at `extensionModel.configurations[].connectionProviders[]`,
+  the namespace at `extensionModel.xmlDsl`. Some connectors (Go-runtime
+  Salesforce) ship with empty `connectionProviders` — the scaffolder
+  handles this by emitting a bare config element.
+- **`dsl`** — XML emission hints. `dsl.operations.<op>.attributes.<paramName>`
+  carries `supportsAttributeDeclaration` and `supportsChildDeclaration`
+  flags that determine whether each parameter is rendered as an XML
+  attribute or as a nested child element. For both Salesforce `query` and
+  Twilio `sendMessage`, every parameter is `supportsAttributeDeclaration:
+  true` — the operation element is flat with all parameters as attributes.
+- **`xsd`** — raw XSD text as a string. The scaffolder writes this to
+  `tmp/connector-metadata/<nickname>.xsd` for an optional well-formedness
+  check after XML emission.
 
-```json
-{
-  "name": "query",
-  "prefix": "salesforce",
-  "elementName": "query",
-  "attributes": [
-    { "attributeName": "config-ref", "required": true,
-      "description": "The name of the configuration to be used to execute this component" },
-    { "attributeName": "target", "required": false,
-      "description": "The name of a variable on which the operation's output will be placed" },
-    { "attributeName": "targetValue", "required": false,
-      "defaultValue": "#[payload]", "expressionRequired": true,
-      "description": "An expression that will be evaluated against the operation's output and the outcome of that expression will be stored in the target variable" }
-  ],
-  "childElements": [
-    { "paramName": "salesforceQuery", "prefix": "salesforce",
-      "elementName": "salesforce-query", "required": true }
-  ],
-  "errorTypes": [
-    "MULE:ANY", "SALESFORCE:CONNECTIVITY",
-    "SALESFORCE:INVALID_INPUT", "SALESFORCE:NOT_FOUND",
-    "SALESFORCE:RETRY_EXHAUSTED", "SALESFORCE:TIMEOUT"
-  ]
-}
-```
-
-**Response (200) — Twilio `create20100401-accounts-messagesjson-by-account-sid`:**
+**Response (200) — Salesforce example (truncated):**
 
 ```json
 {
-  "name": "create20100401-accounts-messagesjson-by-account-sid",
-  "prefix": "twilio",
-  "elementName": "create20100401-accounts-messagesjson-by-account-sid",
-  "attributes": [
-    { "attributeName": "config-ref", "required": true },
-    { "attributeName": "accountSid", "required": true },
-    { "attributeName": "target",      "required": false },
-    { "attributeName": "targetValue", "required": false, "defaultValue": "#[payload]" }
-  ],
-  "childElements": [
-    { "paramName": "body", "prefix": "twilio", "elementName": "body", "required": false }
-  ],
-  "errorTypes": [ "MULE:ANY", "TWILIO:CONNECTIVITY", "TWILIO:INVALID_INPUT" ]
+  "name": "salesforce",
+  "version": "11.4.0",
+  "extensionModel": {
+    "name": "Salesforce",
+    "version": "11.4.0",
+    "vendor": "Mulesoft",
+    "minMuleVersion": "4.4.0",
+    "xmlDsl": {
+      "prefix":         "salesforce",
+      "namespace":      "http://www.mulesoft.org/schema/mule/salesforce",
+      "schemaLocation": "http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd",
+      "schemaVersion":  "11.4.0",
+      "xsdFileName":    "mule-salesforce.xsd"
+    },
+    "configurations": [
+      {
+        "name": "sfdc-config",
+        "connectionProviders": [],
+        "operationModels": [
+          { "name": "query", "parameterGroupModels": [ { "parameterModels": [ { "name": "soql", "required": true, "type": { "type": "String" }, ... } ] } ] },
+          ...
+        ]
+      }
+    ],
+    "errors": [ { "type": "MULE:ANY" }, ... ]
+  },
+  "dsl": {
+    "operations": {
+      "query": {
+        "elementName": "query",
+        "prefix":      "salesforce",
+        "namespace":   "http://www.mulesoft.org/schema/mule/salesforce",
+        "attributes": {
+          "soql":        { "supportsAttributeDeclaration": true,  "supportsChildDeclaration": false, ... },
+          "config-ref":  { "supportsAttributeDeclaration": true,  "supportsChildDeclaration": false, ... },
+          ...
+        }
+      }
+    },
+    "configurations": {
+      "sfdc-config": { "elementName": "sfdc-config", "prefix": "salesforce", ... }
+    }
+  },
+  "xsd": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema...>..."
 }
 ```
 
-**Response (404):** `{ "error": "operation not found", "id": "<id>", "operation": "<name>" }`.
+**Response (200) — Twilio example (highly truncated):**
 
-`describe_operation.sh` writes the response verbatim to
-`tmp/connector-metadata/<nickname>.<operation>.json`. The scaffolder reads
-this file in Step 9 to assemble the operation's XML element.
+```json
+{
+  "name": "twilio",
+  "version": "...",
+  "extensionModel": {
+    "xmlDsl": {
+      "prefix":         "twilio",
+      "namespace":      "http://www.mulesoft.org/schema/mule/twilio",
+      "schemaLocation": "http://www.mulesoft.org/schema/mule/twilio/current/mule-twilio.xsd"
+    },
+    "configurations": [
+      {
+        "name": "config",
+        "connectionProviders": [
+          {
+            "name": "account-sid-auth-token",
+            "parameterGroupModels": [
+              {
+                "parameterModels": [
+                  { "name": "username", "required": true,  "type": { "type": "String" } },
+                  { "name": "password", "required": true,  "type": { "type": "String" } },
+                  { "name": "baseUri",  "required": false, "defaultValue": "https://api.twilio.com" }
+                ]
+              }
+            ]
+          }
+        ],
+        "operationModels": [
+          { "name": "sendMessage", ... },
+          ...
+        ]
+      }
+    ]
+  },
+  "dsl":  { "operations": { "sendMessage": { "elementName": "sendMessage", "attributes": { ... } } } },
+  "xsd":  "..."
+}
+```
+
+**Response (404):** The HTTP connector appears in `/v1/connectors` but
+does not have a descriptor — `/v1/connectors/http/descriptor` returns 404.
+The scaffolder uses a hand-written `<http:listener>` template in that case.
+
+---
+
+### Per-operation endpoint — NOT IMPLEMENTED
+
+The Go-runtime RDS does **not** expose `GET /v1/connectors/{id}/operations/{op}`.
+The full descriptor already contains every operation's full schema under
+`extensionModel.configurations[].operationModels[]`, so no follow-up call
+is needed.
+
+`describe_operation.sh` is a local jq slice over the cached descriptor —
+it reads `tmp/connector-metadata/<nickname>.json` and writes a flattened
+`{ name, elementName, prefix, namespace, attributes[], errorTypes[] }`
+slice to `tmp/connector-metadata/<nickname>.<op>.json`. The
+`attributes[]` array merges parameter semantics from `extensionModel`
+(required, type, expressionSupport, defaultValue) with XML-emission
+flags from `dsl` (asAttribute, asChild, childElementName).
 
 ---
 
@@ -270,18 +204,20 @@ If `RDS_AUTH_TOKEN` is set in `tmp/poc-env.json`, every request adds:
 Authorization: Bearer <RDS_AUTH_TOKEN>
 ```
 
-For local Docker development the token is typically empty; the scripts
-silently omit the header in that case.
+The Go-runtime RDS does not enforce authentication in local Docker mode;
+the scripts silently omit the header when the token is empty.
 
 ---
 
 ## Error envelope
 
-For every non-2xx response, the body is expected to be:
+Non-2xx responses return:
 
 ```json
-{ "error": "<short-message>", "details": "<optional long form>" }
+{ "message": "<short error description>" }
 ```
 
-The scripts pretty-print the body to stderr verbatim and exit 1 — they never
-swallow an error or transform it into a partial result.
+(A handful of paths use `{"error": "..."}` instead — `_rds_lib.sh` prints
+the body verbatim either way.) The scripts pretty-print the body to
+stderr and exit 1; they never swallow an error or transform it into a
+partial result.

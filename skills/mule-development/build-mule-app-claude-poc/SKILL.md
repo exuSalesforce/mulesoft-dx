@@ -58,13 +58,13 @@ This skill ships small bash scripts under `scripts/`. Invoke them with the `Bash
 
 | Script | Purpose | Output location |
 | --- | --- | --- |
-| `scripts/check_env.sh` | Step 1 — verify `curl`, `jq`, the Remote Design Service is reachable, and persist `RDS_BASE_URL` / `RDS_AUTH_TOKEN`. Validation-only. | `tmp/poc-env.json` |
-| `scripts/list_connectors.sh [search]` | Step 3 — call `GET <RDS>/connectors?q=<search>` and write the full JSON list. Search term is optional; when omitted, returns the catalog. | `tmp/connectors-list.json` + stdout digest (one connector per line) |
-| `scripts/describe_connector.sh <connector-id> [<nickname>]` | Step 4 — call `GET <RDS>/connectors/<id>` and persist the full descriptor (operations, sources, configs, attributes, child elements). | `tmp/connector-metadata/<nickname>.json` + stdout digest |
-| `scripts/describe_operation.sh <connector-id> <operation-name> [<nickname>]` | Step 5 — call `GET <RDS>/connectors/<id>/operations/<op>` for one operation's full attribute and child-element schema. | `tmp/connector-metadata/<nickname>.<op>.json` |
+| `scripts/check_env.sh` | Step 1 — verify `curl`, `jq`, the Remote Design Service is reachable (`GET /healthz` → `{"ready": true}`), and persist `RDS_BASE_URL` / `RDS_AUTH_TOKEN`. Validation-only. | `tmp/poc-env.json` |
+| `scripts/list_connectors.sh [search]` | Step 3 — call `GET <RDS>/v1/connectors`, unwrap the `{"connectors": [...]}` envelope, and (optionally) filter client-side on the `name` field. Server-side filtering is not implemented by RDS. | `tmp/connectors-list.json` + stdout digest (`<name>  <ops-count>` per line) |
+| `scripts/describe_connector.sh <connector-id> [<nickname>]` | Step 4 — call `GET <RDS>/v1/connectors/<id>/descriptor` and persist the full descriptor (`extensionModel` + `dsl` + `xsd`). The XSD is also written next to the JSON for the optional well-formedness check in Step 9. | `tmp/connector-metadata/<nickname>.json` + `<nickname>.xsd` + stdout digest |
+| `scripts/describe_operation.sh <connector-id> <operation-name> [<nickname>]` | Step 5 — **local jq slice** of the cached descriptor. No RDS call — the descriptor already contains every operation's full schema. Combines `extensionModel.configurations[].operationModels[]` semantics with `dsl.operations.<op>` XML mapping. | `tmp/connector-metadata/<nickname>.<op>.json` |
 | `scripts/write_spec.sh <spec-json>` | Step 7 — write the consolidated spec to disk in human-readable form (Markdown summary + JSON sidecar). | `tmp/spec/<project-name>.md` + `tmp/spec/<project-name>.json` |
-| `scripts/scaffold_project.sh <spec-json>` | Step 9 — read the approved spec and create the project skeleton (project-artifact.json, src/main/mule/<name>.xml, src/main/resources/config.yaml, yaml/config.yaml, yaml/<flow>.yaml). | `<POC_PROJECT_DIR>/...` |
-| `scripts/xml_to_reactflow.sh <project-dir>` | Step 10 — translate `src/main/mule/<name>.xml` into a `{ nodes, edges }` JSON that React Flow consumes. | `tmp/reactflow/<project-name>.json` + stdout |
+| `scripts/scaffold_project.sh <spec-json>` | Step 9 — read the approved spec and create the project skeleton (project-artifact.json, src/main/mule/<name>.xml, src/main/resources/config.yaml, yaml/config.yaml, yaml/<flow>.yaml). Branches its trigger emission on `.trigger.type`. Default output dir is `~/projects/mule-poc-output/<project-name>` (override via `POC_PROJECT_DIR`). | `<POC_PROJECT_DIR>/...` |
+| `scripts/xml_to_reactflow.sh <project-dir>` | Step 10 (optional) — translate `src/main/mule/<name>.xml` into a `{ nodes, edges }` JSON that React Flow consumes. The Pencil MCP rendering of this JSON is deferred — the JSON sidecar is ready to render whenever the canvas pipeline is wired up. | `tmp/reactflow/<project-name>.json` + stdout |
 
 A seventh file, `scripts/_rds_lib.sh`, is a shared helper sourced by every script that talks to the Remote Design Service. **Do not invoke it directly** — its only public surface is the `rds_get <path> <out>` function used by the scripts above. The Remote Design Service contract it implements is documented in [`references/rds-api.md`](references/rds-api.md).
 
@@ -90,7 +90,9 @@ Phase 2's approval gate is non-negotiable. Phase 3 must not start until the user
 - **No Maven, ever.** This skill never generates `pom.xml`, never adds Maven dependencies, and never invokes `mvn`. The Go-runtime resolves connector schemas at parse time from the bundled XML — there is no build step.
 - **Connector metadata comes from the Remote Design Service, not from training-data memory.** Every operation name, attribute name, and child-element name in the generated XML must be backed by a `tmp/connector-metadata/*.json` file fetched in this session. If you cannot point at a JSON file on disk that contains the element you wrote, the element is hallucinated — delete it and re-fetch metadata.
 - **One Remote Design Service call per response when discovering.** This keeps the user able to follow what the skill is doing and lets `AskUserQuestion` interleave naturally between fetches. Bundling four `describe_connector.sh` calls into one Bash invocation is forbidden during Phase 1.
-- **Authentication assumption is fixed for this POC.** Salesforce uses **basic auth** (username + password + security token). Twilio uses **Account SID + Auth Token**. HTTP listener uses host/port. If the user explicitly asks for OAuth, JWT, or any other auth mechanism, stop and tell them this POC skill only handles basic-auth-style flows; redirect them to `build-mule-integration`.
+- **Authentication assumption is fixed for this POC.** The skill only generates the connection-provider element the Remote Design Service describes. For the canonical connectors that resolves to: Twilio → Account SID + Auth Token (`username`/`password` on `<twilio:account-sid-auth-token-connection>`); HTTP listener → host/port. The Go-runtime Salesforce connector ships **without** any connection-provider metadata, so the scaffolder emits a bare `<salesforce:sfdc-config>` and the user wires credentials in `config.yaml` after opening in ACB. If the user explicitly asks for OAuth, JWT, or any other auth mechanism, stop and tell them this POC skill only handles whatever the RDS describes; redirect them to `build-mule-integration`.
+
+- **Trigger is a user-input choice.** Step 2.5 always asks the user to pick HTTP listener vs Scheduler and persists the answer to `tmp/spec-inputs.json`. The scaffolder branches on `.trigger.type` and emits the matching template — `<http:listener>` for HTTP, `<scheduler><scheduling-strategy><fixed-frequency .../></scheduling-strategy></scheduler>` for Scheduler. Do not skip the question even when the user's prompt strongly implies one or the other; the user input is the source of truth.
 
 ---
 
@@ -118,11 +120,78 @@ In your response text (not a tool call), produce two records — these are plain
 
 - Source: Salesforce (Account object)
 - Target: Twilio (SMS)
-- Trigger: HTTP listener (this POC always exposes the flow as an HTTP endpoint so the user can test it from ACB / `curl`)
 
 **2. Operation hints.** In one or two sentences, capture the verbatim phrases that name what the flow does — e.g. *"queries top 5 Salesforce accounts"*, *"sends a combined SMS"*. Do not classify yet — Step 4's metadata digest decides which connector operation matches.
 
-Your next tool call after Step 2 MUST be `list_connectors.sh` for the source system. Not `describe_connector.sh`, not `AskUserQuestion`. Step 3 is the non-negotiable next step.
+Your next tool call after Step 2 MUST be Step 2.5's `AskUserQuestion` for the trigger choice. Do not skip ahead to `list_connectors.sh`.
+
+---
+
+## Step 2.5: Ask the User for the Trigger Type
+
+Always ask the user — even when the prompt strongly implies one or the other:
+
+```xml
+<ask_followup_question>
+<question>Which trigger should this Mule app use?</question>
+<options>[
+  "HTTP listener — exposes the flow at a POST endpoint you can hit with curl or from ACB",
+  "Scheduler — runs the flow on a fixed-frequency cadence (every N seconds/minutes/hours)"
+]</options>
+</ask_followup_question>
+```
+
+**If the user picks HTTP listener,** ask the follow-up:
+
+```xml
+<ask_followup_question>
+<question>What path and method should the HTTP listener accept?</question>
+<options>[
+  "POST /ops/<project-name> (recommended default)",
+  "GET /ops/<project-name>",
+  "POST /<custom path>",
+  "Other"
+]</options>
+</ask_followup_question>
+```
+
+Persist the result into `tmp/spec-inputs.json` as:
+
+```json
+"trigger": {
+  "type":   "http-listener",
+  "method": "POST",
+  "path":   "/ops/salesforce-accounts-to-twilio"
+}
+```
+
+**If the user picks Scheduler,** ask the follow-up:
+
+```xml
+<ask_followup_question>
+<question>How often should the scheduler fire?</question>
+<options>[
+  "Every 5 minutes (recommended default)",
+  "Every 1 minute",
+  "Every 1 hour",
+  "Custom frequency"
+]</options>
+</ask_followup_question>
+```
+
+Persist into `tmp/spec-inputs.json` as (default `startDelay` is 0 unless the user asked otherwise):
+
+```json
+"trigger": {
+  "type":               "scheduler",
+  "schedulingStrategy": "fixed-frequency",
+  "frequency":          5,
+  "timeUnit":           "MINUTES",
+  "startDelay":         0
+}
+```
+
+The trigger choice is the **only** field of `tmp/spec-inputs.json` written before Step 3. Source / target / params get added later as they're collected.
 
 ---
 
@@ -177,25 +246,29 @@ bash <skill-dir>/scripts/describe_connector.sh twilio
 
 The optional second arg is a **nickname** for the local filename — by default it equals the connector id, which is what the rest of the workflow expects. Override it (e.g., `describe_connector.sh salesforce sfdc`) only when two distinct connectors would otherwise collide on disk.
 
-The script writes `tmp/connector-metadata/<nickname>.json` (full JSON) and prints a digest:
+The script writes `tmp/connector-metadata/<nickname>.json` (the full RDS response: `extensionModel` + `dsl` + `xsd`), `tmp/connector-metadata/<nickname>.xsd` (extracted XSD), and prints a digest:
 
 ```json
 {
+  "name": "salesforce",
+  "version": "11.4.0",
   "namespace_prefix": "salesforce",
+  "namespace_uri":    "http://www.mulesoft.org/schema/mule/salesforce",
+  "schema_location":  "http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd",
   "configs": [
-    { "name": "sfdc-config", "providers": ["basic", "oauth-jwt", "oauth-user-pass"] }
+    { "name": "sfdc-config", "providers": [] }
   ],
   "operations_count": 8,
-  "operations_sample": ["query", "create", "update", "upsert", "delete"],
-  "sources_count": 5,
-  "sources_sample": ["deleted-object-listener", "modified-object-listener", "new-object-listener"],
-  "error_types": ["MULE:ANY", "MULE:CONNECTIVITY", "SALESFORCE:CONNECTIVITY", "SALESFORCE:INVALID_INPUT"]
+  "operations_sample": ["create", "delete", "describeSObject", "getUserInfo", "query", "retrieve", "update", "upsert"],
+  "sources_count": 0,
+  "sources_sample": [],
+  "error_types": []
 }
 ```
 
-The digest has **no version field** — the Remote Design Service is versionless by contract (see `references/rds-api.md`). The `providers` list contains connection-provider *names* (e.g. `basic`), not element names; the descriptor's full `connectionProviders[]` array — including each provider's `elementName`, `attributes`, and `childElements` — is in the JSON file on disk.
+The `providers` list contains connection-provider *names* (e.g. `account-sid-auth-token`). It can be **empty** — the Go-runtime Salesforce connector ships without `connectionProviders`, in which case the scaffolder emits a bare `<salesforce:sfdc-config>` and the user wires credentials in `config.yaml` after opening in ACB.
 
-**Read the digest.** It is the input to Steps 5 and 6 — which operation to call, which connection provider to wire up. Do not skip past the digest to a subsequent fetch. The descriptor already includes the fully-expanded connection-provider schema, so there is no follow-up "config-detail" call.
+**Read the digest.** It is the input to Steps 5 and 6 — which operation to call, which connection provider (if any) to wire up. The descriptor already includes the fully-expanded operation and connection-provider schemas, so Step 5 does not call the RDS again — `describe_operation.sh` is a local jq slice over the cached descriptor.
 
 ---
 
@@ -209,16 +282,15 @@ The POC prompt almost always describes a request/response shape (HTTP endpoint �
 bash <skill-dir>/scripts/describe_operation.sh salesforce query
 ```
 
-Read the response. It contains the full `attributes[]` and `childElements[]` schema — these become XML attributes and nested elements in Step 9.
+The script slices the cached descriptor and writes `tmp/connector-metadata/<nickname>.<op>.json` with a flat `attributes[]` array. Each entry carries `name`, `required`, `type`, `expressionSupport`, `defaultValue`, `asAttribute`, `asChild`, and `childElementName`. The scaffolder uses `asAttribute` / `asChild` to decide whether each parameter renders as an XML attribute or a nested child element. For both Salesforce `query` and Twilio `sendMessage`, every parameter is `asAttribute: true` — the operation element is flat with all parameters as attributes.
 
-**For the target system,** identify the operation that sends/writes data. For Twilio it is the message-creation operation (the actual element name comes from the descriptor — for the bundled connector it is `create20100401-accounts-messagesjson-by-account-sid`). Run:
+**For the target system,** identify the operation that sends/writes data. For the Go-runtime Twilio connector the SMS-send operation is `sendMessage` (camelCase). Run:
 
 ```bash
-bash <skill-dir>/scripts/describe_operation.sh twilio \
-  create20100401-accounts-messagesjson-by-account-sid
+bash <skill-dir>/scripts/describe_operation.sh twilio sendMessage
 ```
 
-**Trigger is fixed for this POC.** The trigger is always `<http:listener>` — Step 2 already established that this POC exposes the flow as an HTTP endpoint so the user can test it from ACB / `curl`. Do NOT call out to the Remote Design Service for connector sources; do not introspect `sources[]`. State the trigger choice inline: "Trigger: HTTP listener (POC default)." If the user's prompt explicitly asks for a cadence or event source ("every 5 minutes", "when an account is updated"), stop and tell them this POC skill is locked to HTTP-listener triggers; redirect them to `build-mule-integration`.
+**Trigger was already chosen in Step 2.5.** Do NOT re-ask the user; do NOT introspect `messageSources[]`. The trigger element is emitted by the scaffolder's template (`<http:listener>` or `<scheduler>`) — it is not metadata-driven for this POC. Event-source triggers (Salesforce object listeners, Kafka consumers, etc.) are out of scope; if the user explicitly asks for one of those at Step 2.5 or Step 5, stop and redirect them to `build-mule-integration`.
 
 **Present operation choice to the user via `AskUserQuestion`** when the descriptor lists multiple operations that could plausibly satisfy the user's intent (e.g., Salesforce has `query`, `query-all`, `retrieve`, `search`). Use the `description` field from the descriptor as the human-readable subtitle:
 
@@ -260,9 +332,9 @@ For the canonical POC:
 
   Build the SOQL inline based on the answer: `SELECT Id, Name, Industry FROM Account LIMIT 5` — do not ask the user to type SOQL.
 
-- **Twilio → send message.** Ask for the body shape. The default the POC uses is "Top N accounts:\n<comma-separated list of Name (Industry)>". For phone numbers, the spec defaults to placeholders — they are filled in via `config.yaml` after the project opens in ACB. **Do not** ask the user for their actual phone number or Twilio Account SID at this step — those are credentials handled in Step 12.
+- **Twilio → sendMessage.** The descriptor lists `from`, `to`, `messageText`, `mediaUrl`, `accountSid` as parameters; `from` and `to` are required. Ask the user for the `from` (Twilio number) and `to` (recipient) phone numbers, plus the message body shape. The default body the POC uses is "Top N accounts:\n<comma-separated list of Name (Industry)>". **Do not** ask the user for their Twilio Account SID at this step — that is a credential handled in Step 12 via `config.yaml`.
 
-Persist each answer to `tmp/spec-inputs.json` immediately so the spec writer in Step 7 can pick them up:
+Persist each answer to `tmp/spec-inputs.json` immediately so the spec writer in Step 7 can pick them up. The `trigger` block was already written in Step 2.5; you are merging in `source`, `target`, `summary`, and `projectName`:
 
 ```json
 {
@@ -284,13 +356,13 @@ Persist each answer to `tmp/spec-inputs.json` immediately so the spec writer in 
     "connectorId": "twilio",
     "nickname":    "twilio",
     "config":      { "name": "twilioConfig", "provider": "account-sid-auth-token" },
-    "operation":   "create20100401-accounts-messagesjson-by-account-sid",
-    "params":      { "bodyTemplate": "Top {{count}} accounts:\\n{{accountList}}" }
+    "operation":   "sendMessage",
+    "params":      { "from": "+15555555555", "to": "+15105551212", "messageText": "Top {{count}} accounts: {{accountList}}" }
   }
 }
 ```
 
-The fields `connectorId` and `operation` MUST match strings the Remote Design Service returned in Steps 3–5. The `config.provider` MUST be one of the connection-provider names from the descriptor digest (e.g., `basic`, not `basic-connection` — that latter value is the *element name* for XML emission, not the descriptor's provider name).
+The fields `connectorId` and `operation` MUST match strings the Remote Design Service returned in Steps 3–5. The `config.provider` MUST be one of the connection-provider names from the descriptor digest (e.g., `account-sid-auth-token` — write_spec.sh appends `-connection` to derive the actual XML element name). When the descriptor digest reports an empty `providers` array (e.g. for the Go-runtime Salesforce connector), set `config.provider` to `null` or omit it; the scaffolder will skip the provider sub-element in that case.
 
 ---
 
@@ -370,42 +442,42 @@ The scaffolder creates exactly the layout the bundled sample at `salesforce-acco
 
 The scaffolder synthesises every file from the approved spec:
 
-- **`project-artifact.json`** — connector manifest for the project. Built by the scaffolder from `tmp/spec/<project-name>.json` (which already merges the relevant slices of `tmp/connector-metadata/*.json`). The manifest is **versionless** — it carries no `version`, `groupId`, or `assetId` fields. Shape:
+- **`project-artifact.json`** — connector manifest for the project. Built by the scaffolder from `tmp/spec/<project-name>.json` (which already merges the relevant slices of `tmp/connector-metadata/*.json`). The manifest is **versionless** at the integration level — it carries no `groupId` or `assetId` — though the descriptor's connector `version` is preserved inside the namespace block so a future tool can correlate it. Shape:
 
   ```json
   {
     "projectName": "salesforce-accounts-to-twilio",
+    "trigger": {
+      "type":   "http-listener",
+      "method": "POST",
+      "path":   "/ops/salesforce-accounts-to-twilio"
+    },
     "connectors": {
       "source": {
         "connectorId": "salesforce",
         "nickname":    "salesforce",
-        "namespace":   { "prefix": "salesforce", "namespace": "http://www.mulesoft.org/schema/mule/salesforce" },
-        "config":      { "name": "salesforceConfig", "provider": "basic" },
+        "namespace":   { "prefix": "salesforce", "namespace": "http://www.mulesoft.org/schema/mule/salesforce", "schemaLocation": "..." },
+        "config":      { "name": "salesforceConfig", "elementName": "sfdc-config", "provider": null },
         "operation":   "query",
-        "connectionProvider": { "elementName": "basic-connection", "attributes": [ ... ], "childElements": [ ... ] },
-        "operationSchema":    { "elementName": "query", "attributes": [ ... ], "childElements": [ ... ] },
-        "errorTypes": [ "MULE:ANY", "SALESFORCE:CONNECTIVITY", ... ]
+        "connectionProvider": null,
+        "operationSchema":    { "name": "query", "elementName": "query", "attributes": [ ... ] },
+        "errorTypes": []
       },
       "target": {
         "connectorId": "twilio",
         "nickname":    "twilio",
-        "namespace":   { "prefix": "twilio", "namespace": "http://www.mulesoft.org/schema/mule/twilio" },
-        "config":      { "name": "twilioConfig", "provider": "account-sid-auth-token" },
-        "operation":   "create20100401-accounts-messagesjson-by-account-sid",
-        "connectionProvider": { "elementName": "account-sid-auth-token-connection", "attributes": [ ... ], "childElements": [ ... ] },
-        "operationSchema":    { "elementName": "create20100401-accounts-messagesjson-by-account-sid", "attributes": [ ... ], "childElements": [ ... ] },
-        "errorTypes": [ "MULE:ANY", "TWILIO:CONNECTIVITY", ... ]
-      },
-      "trigger": {
-        "type":   "http-listener",
-        "method": "POST",
-        "path":   "/ops/salesforce-accounts-to-twilio"
+        "namespace":   { "prefix": "twilio", "namespace": "http://www.mulesoft.org/schema/mule/twilio", "schemaLocation": "..." },
+        "config":      { "name": "twilioConfig", "elementName": "config", "provider": "account-sid-auth-token" },
+        "operation":   "sendMessage",
+        "connectionProvider": { "name": "account-sid-auth-token", "elementName": "account-sid-auth-token-connection", "parameters": [ ... ] },
+        "operationSchema":    { "name": "sendMessage", "elementName": "sendMessage", "attributes": [ ... ] },
+        "errorTypes": [ ... ]
       }
     }
   }
   ```
 
-  The `connectionProvider` and `operationSchema` blocks MUST contain the `attributes[]` and `childElements[]` slices fetched from the Remote Design Service in Steps 4–5 — verbatim, not paraphrased. Anything that does not appear in `tmp/connector-metadata/*.json` does not belong in `project-artifact.json`. The trigger is fixed to HTTP listener for this POC, so it carries `{type, method, path}` only — no separate connector descriptor.
+  The `connectionProvider` and `operationSchema` blocks MUST contain the slices derived from the Remote Design Service descriptor in Steps 4–5 — verbatim, not paraphrased. Anything that does not appear in `tmp/connector-metadata/*.json` does not belong in `project-artifact.json`. `connectionProvider` is `null` when the connector ships without a provider (Go-runtime Salesforce). The trigger block carries `{type, method, path}` for HTTP listeners or `{type, schedulingStrategy, frequency, timeUnit, startDelay}` for the Scheduler.
 
 - **`src/main/mule/<project-name>.xml`** — full flow XML built from connector metadata. Element names, attribute names, and child-element nesting come VERBATIM from `tmp/connector-metadata/*.json`. **Add `doc:name` and `doc:description` to every canvas-visible element** (flows, sources, operations, scopes, branches, global configs) — Step 10's React Flow canvas labels itself from `doc:description`.
 - **`src/main/resources/config.yaml`** — `${ENV_VAR}` placeholders for credentials so ACB can wire them up.
@@ -413,19 +485,21 @@ The scaffolder synthesises every file from the approved spec:
 - **`yaml/<project-name>-flow.yaml`** — the Go-runtime YAML representation of the flow (mirrors the bundled sample's `notify-accounts-sms-flow.yaml`).
 - **`README.md`** — short README describing how to run the app on the Go-runtime and how to test it with `curl`.
 
-**Authentication shapes (POC-fixed):**
+**Authentication shapes (descriptor-driven):**
 
-The scaffolder is metadata-driven — for every connector it reads the chosen `connectionProvider.elementName` from the descriptor, then emits one XML attribute per `required: true` attribute, each pointing at a `${<prefix>.<attributeName>}` placeholder. For the canonical POC connectors that resolves to:
+The scaffolder is metadata-driven — for every connector it reads the chosen `connectionProvider.elementName` from the descriptor, then emits one XML attribute per `required: true` parameter, each pointing at a `${<prefix>.<paramName>}` placeholder. For the canonical POC connectors that resolves to:
 
-- Salesforce → `<salesforce:basic-connection username="${salesforce.username}" password="${salesforce.password}" />` plus optional `securityToken` / `url` if present in the descriptor — basic auth ONLY for this POC.
+- Salesforce → bare `<salesforce:sfdc-config name="salesforceConfig"/>` (the Go-runtime Salesforce connector exposes no connection provider; user wires credentials in `config.yaml` after opening in ACB).
 - Twilio → `<twilio:account-sid-auth-token-connection username="${twilio.username}" password="${twilio.password}" />` (Twilio's connection provider treats the Account SID and Auth Token as `username`/`password` — see `references/rds-api.md`).
-- HTTP listener → `<http:listener-connection host="${http.host}" port="${http.port}" />`.
+- HTTP listener → `<http:listener-connection host="${http.host}" port="${http.port}" />` (template-driven — HTTP is not a descriptor-served connector).
 
-Because every shape comes from the descriptor at scaffold time, swapping the source/target for a different connector "just works" — the scaffolder reads `connectionProvider.attributes[]` and emits whatever placeholders the new connector requires. If the user explicitly picks a non-basic-auth provider (OAuth, JWT), the skill still stops at Step 5 and redirects to `build-mule-integration` per the workflow-wide discipline.
+Because every connector shape comes from the descriptor at scaffold time, swapping the source/target for a different connector "just works" — the scaffolder reads `connectionProvider.parameters[]` and emits whatever placeholders the new connector requires. If the user explicitly picks a non-basic-auth provider (OAuth, JWT), the skill still stops at Step 5 and redirects to `build-mule-integration` per the workflow-wide discipline.
 
 ---
 
-## Step 10: Render the React Flow Canvas
+## Step 10: Render the React Flow Canvas (optional)
+
+> **POC scope:** Step 10 produces the React Flow `{ nodes, edges }` JSON sidecar but does **not** render the canvas. The Pencil MCP rendering pipeline isn't wired into this POC yet — the JSON is here so a future iteration can render it. Skip the actual rendering call and treat the success message in Step 11 as terminal.
 
 Translate the generated XML into the `{ nodes, edges }` shape React Flow renders:
 
@@ -458,7 +532,7 @@ Translation rules the script applies:
 - `<choice>` and `<error-handler>` produce one parent node and child nodes for each `<when>` / `<otherwise>` / `<on-error-*>` branch, with edges fanning out and back in.
 - Positions are laid out left-to-right at 200px increments per top-level step, with branches stacked vertically.
 
-After the script runs, render the canvas via the Pencil MCP App. The canvas is the user-facing visualization of the generated flow — show it inline in your response and reference the JSON file path so the user can re-render it.
+After the script runs, point the user at the JSON file path and move on to Step 11. The canvas rendering itself is deferred (see the note at the top of this step).
 
 ---
 
@@ -486,13 +560,11 @@ Do **not** include marketing prose, "Features Implemented" recaps, or "Next Step
 
 **1. Metadata-driven XML generation.** Never write `<connector:operation>` from memory. Always read it from `tmp/connector-metadata/<nickname>.<op>.json`:
 
-- `attributes[]` → XML attributes on the operation element (use `attributeName` verbatim)
-- `childElements[]` → nested XML elements (use `prefix:elementName`)
-- Include every `required: true` attribute and child element
-- Generate child elements in the exact order of the `childElements[]` array — XSD enforces sequencing
-- Reference `config-ref` names that the scaffolder defined in the global configs
+- `attributes[]` → for each entry, decide attribute vs child element using `asAttribute` / `asChild` (both come from `dsl`); `name` is verbatim from the parameter model.
+- Include every `required: true` parameter; emit `${<prefix>.<name>}` placeholders for required parameters when the spec didn't supply a literal value.
+- Reference `config-ref` names that the scaffolder defined in the global configs.
 
-**2. Fixed authentication shapes for the POC.** Do not surprise the user with OAuth, JWT, mTLS, or session-token flows. The POC is locked to basic auth (Salesforce), Account SID + Auth Token (Twilio), and unauthenticated HTTP listener. Anything else means escalating to `build-mule-integration`.
+**2. Authentication shapes are descriptor-driven.** The scaffolder emits whatever connection-provider element the descriptor describes (e.g. `<twilio:account-sid-auth-token-connection>`), and emits no provider element when the descriptor lists none (Go-runtime Salesforce). Do not surprise the user with OAuth, JWT, or mTLS flows that aren't in the descriptor. Anything else means escalating to `build-mule-integration`.
 
 **3. Spec file is the contract.** Once the user approves the spec at Step 8, Step 9's scaffolder is purely mechanical — no new questions, no new metadata calls. If you find yourself wanting to ask the user something during Step 9, the right answer is to abandon Step 9, go back to Step 6/7, update the spec, and re-approve.
 
@@ -506,7 +578,7 @@ Do **not** include marketing prose, "Features Implemented" recaps, or "Next Step
 
 **Remote Design Service unreachable:** `bash <skill-dir>/scripts/check_env.sh` prints the resolved `RDS_BASE_URL` and the curl error. Fix the URL or start the service before retrying — every other step depends on it.
 
-**Connector returned by `list_connectors.sh` but `describe_connector.sh` 404s:** under the versionless RDS contract every connector is addressed by its `id` slug. If a 404 happens, the most likely cause is that the local `tmp/connectors-list.json` is stale — re-run `list_connectors.sh` to refresh it and pass the `id` field (not the human-readable `name`) to `describe_connector.sh`.
+**Connector returned by `list_connectors.sh` but `describe_connector.sh` 404s:** the Go-runtime RDS catalog can include connectors that don't ship a descriptor — `http` is the canonical example (it appears in `/v1/connectors` but `/v1/connectors/http/descriptor` returns 404). For HTTP, the scaffolder uses a hand-written template instead. For other 404s, re-run `list_connectors.sh` to refresh the catalog and confirm the `name` field is what you're passing to `describe_connector.sh`.
 
 **`xml_to_reactflow.sh` produces a node with empty label:** the corresponding XML element is missing `doc:name`. Fix it by re-scaffolding (Step 9 always emits `doc:name` on canvas-visible elements; a missing one means the scaffolder hit an unknown element kind it didn't have a template for).
 
@@ -521,29 +593,29 @@ Do **not** include marketing prose, "Features Implemented" recaps, or "Next Step
 `<skill-dir>` below is the absolute path you were given in the "skill is now active" message. Use it consistently — do not construct relative `../scripts/...` paths.
 
 ```bash
-# Step 1: validate environment + Remote Design Service reachability
+# Step 1: validate environment + Remote Design Service reachability (GET /healthz → {"ready": true})
 bash <skill-dir>/scripts/check_env.sh
 
-# Step 3: list connectors for a system (writes tmp/connectors-list.json + stdout digest)
+# Step 3: list connectors (GET /v1/connectors), optionally client-side-filtered
 bash <skill-dir>/scripts/list_connectors.sh salesforce
 bash <skill-dir>/scripts/list_connectors.sh twilio
 
-# Step 4: full descriptor for a chosen connector (id from list output)
+# Step 4: full descriptor (GET /v1/connectors/<id>/descriptor) → extensionModel + dsl + xsd
 bash <skill-dir>/scripts/describe_connector.sh salesforce
 bash <skill-dir>/scripts/describe_connector.sh twilio
 
-# Step 5: full schema for an operation
+# Step 5: per-operation slice (LOCAL — no RDS call)
 bash <skill-dir>/scripts/describe_operation.sh salesforce query
-bash <skill-dir>/scripts/describe_operation.sh twilio \
-    create20100401-accounts-messagesjson-by-account-sid
+bash <skill-dir>/scripts/describe_operation.sh twilio sendMessage
 
 # Step 7: write the spec from collected inputs (Markdown + JSON sidecar)
 bash <skill-dir>/scripts/write_spec.sh tmp/spec-inputs.json
 
 # Step 9: scaffold the project from the approved spec
+#         (default output dir: ~/projects/mule-poc-output/<project-name>)
 bash <skill-dir>/scripts/scaffold_project.sh tmp/spec/<project-name>.json
 
-# Step 10: translate the generated XML into a React Flow {nodes, edges} JSON
+# Step 10 (optional): translate the generated XML into a React Flow {nodes, edges} JSON
 bash <skill-dir>/scripts/xml_to_reactflow.sh <POC_PROJECT_DIR>
 ```
 

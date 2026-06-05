@@ -25,6 +25,7 @@
 
 # Safe to source under `set -u` callers: only set defaults if not already set.
 : "${POC_ENV_FILE:=tmp/poc-env.json}"
+: "${RDS_API_PREFIX:=/v1}"
 
 rds_base_url() {
     if [ -n "${RDS_BASE_URL:-}" ]; then
@@ -51,7 +52,9 @@ rds_auth_args() {
 }
 
 # rds_get <path> <out_file>
-#   <path>     — e.g. "/connectors" or "/connectors/salesforce"
+#   <path>     — e.g. "/connectors" or "/connectors/salesforce/descriptor"
+#                The path is prefixed with $RDS_API_PREFIX (default "/v1")
+#                unless it already starts with "/v" or with "/healthz".
 #   <out_file> — destination file for the response body
 #
 # On success: out_file contains the body, function returns 0.
@@ -62,6 +65,14 @@ rds_get() {
     local out_file="$2"
     local base
     base="$(rds_base_url)"
+
+    # Prefix with /v1 unless caller passed an already-prefixed path or an
+    # unversioned health probe.
+    case "$path" in
+        /healthz|/v[0-9]*) ;;
+        /*) path="${RDS_API_PREFIX%/}${path}" ;;
+    esac
+
     local url="${base%/}${path}"
 
     # Build auth args without forcing the caller to handle empty arrays

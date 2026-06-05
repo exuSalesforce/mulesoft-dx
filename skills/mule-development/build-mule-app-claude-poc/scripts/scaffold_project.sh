@@ -19,15 +19,23 @@
 #       ├── config.yaml
 #       └── <project>-flow.yaml
 #
-# The XML, config files, and project-artifact.json are all derived from
-# tmp/connector-metadata/ + the spec sidecar — nothing is hardcoded except
-# the doc:* attributes (which are human-readable labels) and the standard
-# `<configuration-properties>` / `<http:listener-config>` boilerplate.
+# All XML / YAML output is derived from the spec sidecar. Connector
+# element names, attribute names, and namespace URIs come straight from
+# the Remote Design Service descriptors (extensionModel + dsl). The
+# scaffolder never invents an attribute name or assumes a wrapper child
+# element — what the descriptor says, the XML emits.
+#
+# Trigger handling has two templates (chosen from spec.trigger.type):
+#   - "http-listener" → emits <http:listener-config> + <http:listener>,
+#                       reads payload.* into vars
+#   - "scheduler"     → emits <scheduler><scheduling-strategy>...,
+#                       reads p('app.*') into vars
 #
 # Usage:
 #   scripts/scaffold_project.sh <spec-sidecar.json>
 #
-# Output dir is ${POC_PROJECT_DIR} when set; otherwise ./<projectName>.
+# Output dir is ${POC_PROJECT_DIR} when set; otherwise
+# ~/projects/mule-poc-output/<projectName>.
 #
 # Exit code:
 #   0  success
@@ -55,8 +63,9 @@ if [ -z "$PROJECT_NAME" ]; then
     exit 1
 fi
 
-PROJECT_DIR="${POC_PROJECT_DIR:-./$PROJECT_NAME}"
+PROJECT_DIR="${POC_PROJECT_DIR:-${HOME}/projects/mule-poc-output/$PROJECT_NAME}"
 
+mkdir -p "$(dirname "$PROJECT_DIR")"
 if [ -e "$PROJECT_DIR" ] && [ -n "$(ls -A "$PROJECT_DIR" 2>/dev/null)" ]; then
     echo "❌ project directory already exists and is not empty: $PROJECT_DIR" >&2
     echo "   Move it aside or remove it before re-scaffolding." >&2
@@ -67,6 +76,94 @@ mkdir -p "$PROJECT_DIR/src/main/mule" \
          "$PROJECT_DIR/src/main/resources" \
          "$PROJECT_DIR/yaml"
 
+METADATA_DIR="${CONNECTOR_METADATA_DIR:-tmp/connector-metadata}"
+
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+
+# Pull a value from the spec sidecar.
+spec() { jq -r "$1" "$SPEC"; }
+
+# Read a slice from the spec into a variable.
+SOURCE_PREFIX=$(spec '.connectors.source.namespace.prefix // ""')
+SOURCE_NS_URI=$(spec '.connectors.source.namespace.namespace // ""')
+SOURCE_NS_XSD=$(spec '.connectors.source.namespace.schemaLocation // ""')
+SOURCE_CONFIG_NAME=$(spec '.connectors.source.config.name // ""')
+SOURCE_CONFIG_ELEMENT=$(spec '.connectors.source.config.elementName // ""')
+SOURCE_OPERATION=$(spec '.connectors.source.operation // ""')
+
+TARGET_PREFIX=$(spec '.connectors.target.namespace.prefix // ""')
+TARGET_NS_URI=$(spec '.connectors.target.namespace.namespace // ""')
+TARGET_NS_XSD=$(spec '.connectors.target.namespace.schemaLocation // ""')
+TARGET_CONFIG_NAME=$(spec '.connectors.target.config.name // ""')
+TARGET_CONFIG_ELEMENT=$(spec '.connectors.target.config.elementName // ""')
+TARGET_OPERATION=$(spec '.connectors.target.operation // ""')
+
+TRIGGER_TYPE=$(spec '.trigger.type // "http-listener"')
+
+# emit_op_attrs <role>
+#   For the role's operationSchema.attributes[], emit one XML attribute
+#   per parameter where:
+#     - the dsl says it can be an attribute (asAttribute == true)
+#     - AND either the spec provides a value via .params, OR the parameter is required
+#   Required params with no user value get a ${prefix.name} placeholder.
+#   The first attribute is always config-ref (handled by caller).
+emit_op_attrs() {
+    local role="$1"
+    jq -r --arg role "$role" '
+        .connectors[$role] as $r
+        | $r.namespace.prefix as $prefix
+        | ($r.params // {}) as $p
+        | ($r.operationSchema.attributes // [])
+        | map(select(.name != "config-ref" and .asAttribute == true))
+        | map(
+            . as $attr
+            | $p[$attr.name] as $userVal
+            | if ($userVal != null and ($userVal | tostring) != "") then
+                "                " + $attr.name + "=\"" + ($userVal | tostring | gsub("\""; "&quot;")) + "\""
+              elif $attr.required then
+                "                " + $attr.name + "=\"${" + $prefix + "." + $attr.name + "}\""
+              else empty
+              end
+          )
+        | .[]
+    ' "$SPEC"
+}
+
+# emit_provider_attrs <role>
+#   For the role's connectionProvider.parameters[], emit ${prefix.name}
+#   placeholders for every required parameter. Returns empty when the
+#   connector has no connectionProvider (e.g. salesforce on go-runtime).
+emit_provider_attrs() {
+    local role="$1"
+    jq -r --arg role "$role" '
+        .connectors[$role] as $r
+        | if $r.connectionProvider == null then empty
+          else
+            $r.namespace.prefix as $prefix
+            | ($r.connectionProvider.parameters // [])
+            | map(select(.required == true))
+            | map("            " + .name + "=\"${" + $prefix + "." + .name + "}\"")
+            | .[]
+          end
+    ' "$SPEC"
+}
+
+SOURCE_OP_ATTRS=$(emit_op_attrs source)
+TARGET_OP_ATTRS=$(emit_op_attrs target)
+SOURCE_PROV_ATTRS=$(emit_provider_attrs source)
+TARGET_PROV_ATTRS=$(emit_provider_attrs target)
+
+# Element name for the operation (dsl.elementName, falls back to op name)
+SOURCE_OP_ELEMENT=$(spec '.connectors.source.operationSchema.elementName // .connectors.source.operation // ""')
+TARGET_OP_ELEMENT=$(spec '.connectors.target.operationSchema.elementName // .connectors.target.operation // ""')
+
+# Connection provider element name (e.g. "basic-connection",
+# "account-sid-auth-token-connection")
+SOURCE_PROV_ELEMENT=$(spec '.connectors.source.connectionProvider.elementName // ""')
+TARGET_PROV_ELEMENT=$(spec '.connectors.target.connectionProvider.elementName // ""')
+
 # ----------------------------------------------------------------------
 # 1. project-artifact.json — connector manifest
 # ----------------------------------------------------------------------
@@ -74,89 +171,96 @@ ARTIFACT="$PROJECT_DIR/project-artifact.json"
 jq --arg projectName "$PROJECT_NAME" '
 {
   projectName: $projectName,
-  connectors: {
-    source:  (.connectors.source  // null),
-    target:  (.connectors.target  // null),
-    trigger: (.connectors.trigger // null)
-  }
+  trigger:    .trigger,
+  connectors: .connectors
 }
 ' "$SPEC" > "$ARTIFACT"
 echo "✅ wrote $ARTIFACT"
 
 # ----------------------------------------------------------------------
-# 2. config.yaml files — placeholders for required connection-provider attrs
+# 2. config.yaml files — placeholders for required attrs
 # ----------------------------------------------------------------------
 RESOURCES_YAML="$PROJECT_DIR/src/main/resources/config.yaml"
 GO_YAML="$PROJECT_DIR/yaml/config.yaml"
 
-# Build a list of {role, prefix, attributeName} tuples for every required
-# attribute on the chosen connection provider of source/target. Trigger is
-# always HTTP listener for this POC, so we add http.host / http.port
-# placeholders explicitly.
+# Build {ns, attr} tuples for every required parameter on the chosen
+# connection provider of source/target. When a connector has no
+# provider (salesforce go-runtime) the loop yields nothing for it.
 PLACEHOLDERS=$(jq -r '
-  def kv(role; ns):
-    .connectors[role] // empty
-    | (.connectionProvider.attributes // [])
-    | map(select(.required == true))
-    | map({
-        role: role,
-        ns:   (ns // role),
-        attr: .attributeName
-      });
-
-  [ kv("source"; (.connectors.source.namespace.prefix // .connectors.source.namespace // "source")),
-    kv("target"; (.connectors.target.namespace.prefix // .connectors.target.namespace // "target")) ]
-  | add
-  | .[]
-  | "\(.ns)\t\(.attr)"
+  def kv(role):
+    .connectors[role] as $r
+    | if $r.connectionProvider == null then empty
+      else
+        ($r.namespace.prefix // role) as $ns
+        | ($r.connectionProvider.parameters // [])
+        | map(select(.required == true))
+        | map("\($ns)\t\(.name)")[]
+      end;
+  kv("source"), kv("target")
 ' "$SPEC")
-
-# Always add http.host / http.port for the listener
-{
-    echo "salesforce_default_url"
-} >/dev/null
 
 # resources/config.yaml — env-var placeholders for ACB
 {
-    # group placeholders by namespace prefix
     declare -A SEEN_NS=()
-    while IFS=$'\t' read -r ns attr; do
-        [ -z "$ns" ] && continue
-        if [ -z "${SEEN_NS[$ns]:-}" ]; then
-            printf '%s:\n' "$ns"
-            SEEN_NS[$ns]=1
-        fi
-        UPPER=$(printf '%s_%s' "$ns" "$attr" | tr '[:lower:]' '[:upper:]' | tr '.' '_')
-        printf '  %s: "${%s}"\n' "$attr" "$UPPER"
-    done <<<"$PLACEHOLDERS"
+    if [ -n "$PLACEHOLDERS" ]; then
+        while IFS=$'\t' read -r ns attr; do
+            [ -z "$ns" ] && continue
+            if [ -z "${SEEN_NS[$ns]:-}" ]; then
+                printf '%s:\n' "$ns"
+                SEEN_NS[$ns]=1
+            fi
+            UPPER=$(printf '%s_%s' "$ns" "$attr" | tr '[:lower:]' '[:upper:]' | tr '.' '_')
+            printf '  %s: "${%s}"\n' "$attr" "$UPPER"
+        done <<<"$PLACEHOLDERS"
+    fi
 
-    cat <<'EOF'
+    if [ "$TRIGGER_TYPE" = "scheduler" ]; then
+        cat <<'EOF'
+
+app:
+  limit: "${APP_LIMIT}"
+  phoneNumber: "${APP_PHONE_NUMBER}"
+EOF
+    else
+        cat <<'EOF'
 
 http:
-  host: "0.0.0.0"
-  port: "8081"
+  host: "${HTTP_HOST:-0.0.0.0}"
+  port: "${HTTP_PORT:-8081}"
 EOF
+    fi
 } > "$RESOURCES_YAML"
 echo "✅ wrote $RESOURCES_YAML"
 
 # yaml/config.yaml — Go-runtime style ${dot.notation}
 {
     declare -A SEEN_NS2=()
-    while IFS=$'\t' read -r ns attr; do
-        [ -z "$ns" ] && continue
-        if [ -z "${SEEN_NS2[$ns]:-}" ]; then
-            printf '%s:\n' "$ns"
-            SEEN_NS2[$ns]=1
-        fi
-        printf '    %s: ${%s.%s}\n' "$attr" "$ns" "$attr"
-    done <<<"$PLACEHOLDERS"
+    if [ -n "$PLACEHOLDERS" ]; then
+        while IFS=$'\t' read -r ns attr; do
+            [ -z "$ns" ] && continue
+            if [ -z "${SEEN_NS2[$ns]:-}" ]; then
+                printf '%s:\n' "$ns"
+                SEEN_NS2[$ns]=1
+            fi
+            printf '    %s: ${%s.%s}\n' "$attr" "$ns" "$attr"
+        done <<<"$PLACEHOLDERS"
+    fi
 
-    cat <<'EOF'
+    if [ "$TRIGGER_TYPE" = "scheduler" ]; then
+        cat <<'EOF'
+
+app:
+    limit: ${app.limit}
+    phoneNumber: ${app.phoneNumber}
+EOF
+    else
+        cat <<'EOF'
 
 http:
     host: ${http.host}
     port: ${http.port}
 EOF
+    fi
 } > "$GO_YAML"
 echo "✅ wrote $GO_YAML"
 
@@ -165,79 +269,86 @@ echo "✅ wrote $GO_YAML"
 # ----------------------------------------------------------------------
 FLOW_XML="$PROJECT_DIR/src/main/mule/${PROJECT_NAME}.xml"
 
-# Read everything we need into shell vars
-SOURCE_NS=$(jq -r '.connectors.source.namespace.prefix // .connectors.source.namespace // ""' "$SPEC")
-SOURCE_NS_URI=$(jq -r '.connectors.source.namespace.namespace // ("http://www.mulesoft.org/schema/mule/" + (.connectors.source.namespace.prefix // .connectors.source.namespace // ""))' "$SPEC")
-SOURCE_NS_XSD=$(jq -r '
-  .connectors.source.namespace.schemaLocation
-  // ("http://www.mulesoft.org/schema/mule/" + (.connectors.source.namespace.prefix // .connectors.source.namespace // "") + "/current/mule-" + (.connectors.source.namespace.prefix // .connectors.source.namespace // "") + ".xsd")
-' "$SPEC")
-SOURCE_CONFIG_NAME=$(jq -r '.connectors.source.config.name // ""' "$SPEC")
-SOURCE_CONFIG_ELEMENT=$(jq -r '
-  (.connectors.source.connectionProvider // null) as $cp
-  | if $cp == null then ""
-    else (
-      # The config element is the descriptor's first config.elementName — fall
-      # back to "<prefix>-config" when missing.
-      .connectors.source.config.name as $cn |
-      if $cn != null and $cn != "" then $cn
-      else (.connectors.source.namespace.prefix + "-config")
-      end
-    )
-  end
-' "$SPEC")
-SOURCE_CONN_ELEMENT=$(jq -r '.connectors.source.connectionProvider.elementName // ""' "$SPEC")
-SOURCE_OPERATION=$(jq -r '.connectors.source.operation // ""' "$SPEC")
-SOURCE_OP_ELEMENT=$(jq -r '.connectors.source.operationSchema.elementName // .connectors.source.operation // ""' "$SPEC")
-SOURCE_SOQL=$(jq -r '.connectors.source.params.soql // ""' "$SPEC")
+# XML-escape the summary for the flow's doc:description.
+SUMMARY_RAW=$(spec '.summary // "Auto-generated Mule flow"')
+SUMMARY_ESC=$(printf '%s' "$SUMMARY_RAW" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g')
 
-TARGET_NS=$(jq -r '.connectors.target.namespace.prefix // .connectors.target.namespace // ""' "$SPEC")
-TARGET_NS_URI=$(jq -r '.connectors.target.namespace.namespace // ("http://www.mulesoft.org/schema/mule/" + (.connectors.target.namespace.prefix // .connectors.target.namespace // ""))' "$SPEC")
-TARGET_NS_XSD=$(jq -r '
-  .connectors.target.namespace.schemaLocation
-  // ("http://www.mulesoft.org/schema/mule/" + (.connectors.target.namespace.prefix // .connectors.target.namespace // "") + "/current/mule-" + (.connectors.target.namespace.prefix // .connectors.target.namespace // "") + ".xsd")
-' "$SPEC")
-TARGET_CONFIG_NAME=$(jq -r '.connectors.target.config.name // ""' "$SPEC")
-TARGET_CONN_ELEMENT=$(jq -r '.connectors.target.connectionProvider.elementName // ""' "$SPEC")
-TARGET_OPERATION=$(jq -r '.connectors.target.operation // ""' "$SPEC")
-TARGET_OP_ELEMENT=$(jq -r '.connectors.target.operationSchema.elementName // .connectors.target.operation // ""' "$SPEC")
-TARGET_BODY_TEMPLATE=$(jq -r '.connectors.target.params.bodyTemplate // "Top {{count}} accounts:\\n{{accountList}}"' "$SPEC")
+# Trigger snippets ---------------------------------------------------
+case "$TRIGGER_TYPE" in
+    scheduler)
+        FREQUENCY=$(spec '.trigger.frequency // 5')
+        TIME_UNIT=$(spec '.trigger.timeUnit // "MINUTES"')
+        START_DELAY=$(spec '.trigger.startDelay // 0')
+        TRIGGER_GLOBAL_CONFIG=""
+        TRIGGER_ELEMENT="<scheduler doc:name=\"Scheduler\"
+            doc:description=\"Fires every ${FREQUENCY} ${TIME_UNIT} (start delay ${START_DELAY})\">
+            <scheduling-strategy>
+                <fixed-frequency frequency=\"${FREQUENCY}\" timeUnit=\"${TIME_UNIT}\" startDelay=\"${START_DELAY}\"/>
+            </scheduling-strategy>
+        </scheduler>"
+        SET_VARS="<set-variable variableName=\"limit\" value=\"#[p('app.limit')]\"
+            doc:name=\"Set Limit\"
+            doc:description=\"Reads record limit from app.limit config\"/>
 
-TRIGGER_METHOD=$(jq -r '.trigger.method // "POST"' "$SPEC")
-TRIGGER_PATH=$(jq -r '.trigger.path // ("/ops/" + .projectName)' "$SPEC")
+        <set-variable variableName=\"phoneNumber\" value=\"#[p('app.phoneNumber')]\"
+            doc:name=\"Set Phone Number\"
+            doc:description=\"Reads target phone number from app.phoneNumber config\"/>"
+        FINAL_RESPONSE_TRANSFORM=""
+        ;;
+    http-listener|*)
+        TRIGGER_METHOD=$(spec '.trigger.method // "POST"')
+        TRIGGER_PATH=$(spec '.trigger.path // ("/ops/" + .projectName)')
+        TRIGGER_GLOBAL_CONFIG="<http:listener-config name=\"httpListenerConfig\"
+        doc:name=\"HTTP Listener Config\"
+        doc:description=\"HTTP listener configuration for inbound requests\">
+        <http:listener-connection host=\"\${http.host}\" port=\"\${http.port}\"/>
+    </http:listener-config>"
+        TRIGGER_ELEMENT="<http:listener config-ref=\"httpListenerConfig\" path=\"${TRIGGER_PATH}\" allowedMethods=\"${TRIGGER_METHOD}\"
+            doc:name=\"HTTP ${TRIGGER_METHOD} ${TRIGGER_PATH}\"
+            doc:description=\"Receives ${TRIGGER_METHOD} requests from the caller\"/>"
+        SET_VARS="<set-variable variableName=\"limit\" value=\"#[payload.limit]\"
+            doc:name=\"Set Limit\"
+            doc:description=\"Extracts the record limit from the request body\"/>
 
-# emit_attrs — for a list of {attributeName,required} objects, emit XML
-# attributes referencing ${ns.attr} placeholders for required attrs only.
-emit_required_attrs() {
-    local block="$1"   # "source" | "target"
-    local ns
-    ns=$(jq -r --arg b "$block" '.connectors[$b].namespace.prefix // .connectors[$b].namespace // ""' "$SPEC")
-    jq -r --arg b "$block" --arg ns "$ns" '
-      (.connectors[$b].connectionProvider.attributes // [])
-      | map(select(.required == true))
-      | map("            " + .attributeName + "=\"${" + $ns + "." + .attributeName + "}\"")
-      | join("\n")
-    ' "$SPEC"
-}
+        <set-variable variableName=\"phoneNumber\" value=\"#[payload.phoneNumber]\"
+            doc:name=\"Set Phone Number\"
+            doc:description=\"Extracts the target phone number from the request body\"/>"
+        FINAL_RESPONSE_TRANSFORM="<ee:transform
+            doc:name=\"Build Response\"
+            doc:description=\"Returns recordsNotified, phoneNumber and target response\">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    recordsNotified: sizeOf(vars.records default []),
+    phoneNumber:     vars.phoneNumber,
+    targetResponse:  vars.targetResp
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>"
+        ;;
+esac
 
-SOURCE_REQ_ATTRS=$(emit_required_attrs source)
-TARGET_REQ_ATTRS=$(emit_required_attrs target)
-
-# Twilio's create-message operation requires accountSid as an attribute on
-# the operation element itself — pull it from the spec inputs if present.
-TARGET_OP_EXTRA_ATTRS=$(jq -r '
-  (.connectors.target.operationSchema.attributes // [])
-  | map(select(.required == true and .attributeName != "config-ref"))
-  | map("            " + .attributeName + "=\"${" + (.attributeName | sub("[A-Z]"; "_  ") | ascii_downcase | gsub(" "; "")) + "}\"")
-  | join("\n")
-' "$SPEC")
+# Connection-provider sub-elements (omitted entirely when the
+# connector has no provider on the Go runtime — like salesforce).
+SOURCE_CONN_ELEMENT_XML=""
+if [ -n "$SOURCE_PROV_ELEMENT" ]; then
+    SOURCE_CONN_ELEMENT_XML="<${SOURCE_PREFIX}:${SOURCE_PROV_ELEMENT}
+${SOURCE_PROV_ATTRS}/>"
+fi
+TARGET_CONN_ELEMENT_XML=""
+if [ -n "$TARGET_PROV_ELEMENT" ]; then
+    TARGET_CONN_ELEMENT_XML="<${TARGET_PREFIX}:${TARGET_PROV_ELEMENT}
+${TARGET_PROV_ATTRS}/>"
+fi
 
 cat > "$FLOW_XML" <<XMLEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <mule xmlns="http://www.mulesoft.org/schema/mule/core"
       xmlns:http="http://www.mulesoft.org/schema/mule/http"
-      xmlns:${SOURCE_NS}="${SOURCE_NS_URI}"
-      xmlns:${TARGET_NS}="${TARGET_NS_URI}"
+      xmlns:${SOURCE_PREFIX}="${SOURCE_NS_URI}"
+      xmlns:${TARGET_PREFIX}="${TARGET_NS_URI}"
       xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
       xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -250,123 +361,62 @@ cat > "$FLOW_XML" <<XMLEOF
 
     <configuration-properties file="config.yaml"
         doc:name="Configuration Properties"
-        doc:description="Loads externalized configuration from config.yaml" />
+        doc:description="Loads externalized configuration from config.yaml"/>
 
-    <http:listener-config name="httpListenerConfig"
-        doc:name="HTTP Listener Config"
-        doc:description="HTTP listener configuration for inbound requests">
-        <http:listener-connection host="\${http.host}" port="\${http.port}" />
-    </http:listener-config>
+    ${TRIGGER_GLOBAL_CONFIG}
 
-    <${SOURCE_NS}:${SOURCE_CONFIG_ELEMENT} name="${SOURCE_CONFIG_NAME}"
-        doc:name="${SOURCE_NS} Config"
-        doc:description="${SOURCE_NS} connection (auto-generated from connector metadata)">
-        <${SOURCE_NS}:${SOURCE_CONN_ELEMENT}
-${SOURCE_REQ_ATTRS} />
-    </${SOURCE_NS}:${SOURCE_CONFIG_ELEMENT}>
+    <${SOURCE_PREFIX}:${SOURCE_CONFIG_ELEMENT} name="${SOURCE_CONFIG_NAME}"
+        doc:name="${SOURCE_PREFIX} Config"
+        doc:description="${SOURCE_PREFIX} connection (auto-generated from RDS metadata)">
+        ${SOURCE_CONN_ELEMENT_XML}
+    </${SOURCE_PREFIX}:${SOURCE_CONFIG_ELEMENT}>
 
-    <${TARGET_NS}:config name="${TARGET_CONFIG_NAME}"
-        doc:name="${TARGET_NS} Config"
-        doc:description="${TARGET_NS} connection (auto-generated from connector metadata)">
-        <${TARGET_NS}:${TARGET_CONN_ELEMENT}
-${TARGET_REQ_ATTRS} />
-    </${TARGET_NS}:config>
+    <${TARGET_PREFIX}:${TARGET_CONFIG_ELEMENT} name="${TARGET_CONFIG_NAME}"
+        doc:name="${TARGET_PREFIX} Config"
+        doc:description="${TARGET_PREFIX} connection (auto-generated from RDS metadata)">
+        ${TARGET_CONN_ELEMENT_XML}
+    </${TARGET_PREFIX}:${TARGET_CONFIG_ELEMENT}>
 
     <flow name="${PROJECT_NAME}"
         doc:name="${PROJECT_NAME}"
-        doc:description="$(jq -r '.summary // "Auto-generated Mule flow"' "$SPEC" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')">
+        doc:description="${SUMMARY_ESC}">
 
-        <http:listener config-ref="httpListenerConfig" path="${TRIGGER_PATH}" allowedMethods="${TRIGGER_METHOD}"
-            doc:name="HTTP ${TRIGGER_METHOD} ${TRIGGER_PATH}"
-            doc:description="Receives ${TRIGGER_METHOD} requests from the caller" />
+        ${TRIGGER_ELEMENT}
 
-        <set-variable variableName="limit" value="#[payload.limit]"
-            doc:name="Set Limit"
-            doc:description="Extracts the record limit from the request body" />
+        ${SET_VARS}
 
-        <set-variable variableName="phoneNumber" value="#[payload.phoneNumber]"
-            doc:name="Set Phone Number"
-            doc:description="Extracts the target phone number from the request body" />
-
-        <${SOURCE_NS}:${SOURCE_OP_ELEMENT} config-ref="${SOURCE_CONFIG_NAME}"
-            doc:name="Query ${SOURCE_NS}"
-            doc:description="Queries ${SOURCE_NS} using SOQL"
-            target="accounts">
-            <${SOURCE_NS}:${SOURCE_NS}-query>
-                #["${SOURCE_SOQL//\"/\\\"}"]
-            </${SOURCE_NS}:${SOURCE_NS}-query>
-        </${SOURCE_NS}:${SOURCE_OP_ELEMENT}>
+        <${SOURCE_PREFIX}:${SOURCE_OP_ELEMENT} config-ref="${SOURCE_CONFIG_NAME}"
+            doc:name="Query ${SOURCE_PREFIX}"
+            doc:description="Calls ${SOURCE_PREFIX}:${SOURCE_OP_ELEMENT} via RDS-described attributes"
+            target="records"
+${SOURCE_OP_ATTRS}/>
 
         <logger level="INFO"
-            message="#[output text/plain --- 'Queried ' ++ sizeOf(vars.accounts) ++ ' records for ' ++ vars.phoneNumber]"
+            message="#[output text/plain --- 'Queried ' ++ sizeOf(vars.records default []) ++ ' records']"
             doc:name="Log Query Count"
-            doc:description="Logs the number of records queried and target phone number" />
+            doc:description="Logs the number of records returned by ${SOURCE_PREFIX}:${SOURCE_OP_ELEMENT}"/>
 
-        <ee:transform
-            doc:name="Build SMS Payload"
-            doc:description="Formats records into a Twilio SMS body with To/From/Body fields">
-            <ee:message>
-                <ee:set-payload><![CDATA[%dw 2.0
-output application/x-www-form-urlencoded
----
-{
-    To: vars.phoneNumber,
-    From: p('${TARGET_NS}.fromNumber'),
-    Body: "Top " ++ sizeOf(vars.accounts) ++ " accounts:\n" ++ (vars.accounts map ((account) ->
-        (account.Name default "") ++ " (" ++ (account.Industry default "N/A") ++ ")"
-    ) joinBy "\n")
-}]]></ee:set-payload>
-            </ee:message>
-        </ee:transform>
-
-        <${TARGET_NS}:${TARGET_OP_ELEMENT}
-            config-ref="${TARGET_CONFIG_NAME}"
-            accountSid="\${${TARGET_NS}.username}"
-            doc:name="Send via ${TARGET_NS}"
-            doc:description="Sends the formatted message via ${TARGET_NS}"
-            target="${TARGET_NS}Resp" />
+        <${TARGET_PREFIX}:${TARGET_OP_ELEMENT} config-ref="${TARGET_CONFIG_NAME}"
+            doc:name="Send via ${TARGET_PREFIX}"
+            doc:description="Calls ${TARGET_PREFIX}:${TARGET_OP_ELEMENT} via RDS-described attributes"
+            target="targetResp"
+${TARGET_OP_ATTRS}/>
 
         <logger level="INFO"
-            message="#[output text/plain --- 'Sent, SID=' ++ (vars.${TARGET_NS}Resp.sid default 'unknown')]"
-            doc:name="Log ${TARGET_NS} Response"
-            doc:description="Logs the message SID returned by ${TARGET_NS}" />
+            message="#[output text/plain --- 'Sent via ${TARGET_PREFIX}: ' ++ (vars.targetResp default 'no response')]"
+            doc:name="Log ${TARGET_PREFIX} Response"
+            doc:description="Logs the response returned by ${TARGET_PREFIX}:${TARGET_OP_ELEMENT}"/>
 
-        <ee:transform
-            doc:name="Build Response"
-            doc:description="Returns recordsNotified, phoneNumber and message SID">
-            <ee:message>
-                <ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-    recordsNotified: sizeOf(vars.accounts),
-    phoneNumber: vars.phoneNumber,
-    messageSid: vars.${TARGET_NS}Resp.sid
-}]]></ee:set-payload>
-            </ee:message>
-        </ee:transform>
+        ${FINAL_RESPONSE_TRANSFORM}
 
         <error-handler>
             <on-error-propagate type="ANY"
                 doc:name="On Error"
-                doc:description="Logs the error and returns a structured error response">
+                doc:description="Logs the error and propagates it to the caller">
                 <logger level="ERROR"
                     message="#[output text/plain --- 'Flow error: ' ++ (error.description default 'no description')]"
                     doc:name="Log Error Detail"
-                    doc:description="Logs the error for debugging" />
-                <ee:transform doc:name="Error Response"
-                    doc:description="Builds a JSON error response">
-                    <ee:message>
-                        <ee:set-payload><![CDATA[%dw 2.0
-output application/json
----
-{
-    error: true,
-    errorType: error.errorType,
-    description: error.description
-}]]></ee:set-payload>
-                    </ee:message>
-                </ee:transform>
+                    doc:description="Logs the error description for diagnostics"/>
             </on-error-propagate>
         </error-handler>
 
@@ -376,96 +426,57 @@ XMLEOF
 echo "✅ wrote $FLOW_XML"
 
 # ----------------------------------------------------------------------
-# 4. yaml/<project>-flow.yaml — Go-runtime YAML representation
+# 4. yaml/<project>-flow.yaml — minimal Go-runtime YAML representation
 # ----------------------------------------------------------------------
 GO_FLOW_YAML="$PROJECT_DIR/yaml/${PROJECT_NAME}-flow.yaml"
-cat > "$GO_FLOW_YAML" <<YAMLEOF
-flow:
-    name: ${PROJECT_NAME}
-    steps:
-        - set-variable:
-            name: limit
-            value: '#[payload.limit]'
-        - set-variable:
-            name: phoneNumber
-            value: '#[payload.phoneNumber]'
-        - connector:
-            type: ${SOURCE_NS}
-            operation: ${SOURCE_OPERATION}
-            target: vars.accounts
-            config:
-                soql: '#["${SOURCE_SOQL//\"/\\\"}"]'
-        - logger:
-            level: INFO
-            message: '#[output text/plain --- ''Queried '' ++ sizeOf(vars.accounts) ++ '' records for '' ++ vars.phoneNumber]'
-        - transform:
-            lang: dataweave
-            script: |-
-                %dw 2.0
-                output application/x-www-form-urlencoded
-                ---
-                {
-                    To: vars.phoneNumber,
-                    From: p('${TARGET_NS}.fromNumber'),
-                    Body: "Top " ++ sizeOf(vars.accounts) ++ " accounts:\n" ++ (vars.accounts map ((account) ->
-                        (account.Name default "") ++ " (" ++ (account.Industry default "N/A") ++ ")"
-                    ) joinBy "\n")
-                }
-        - connector:
-            type: ${TARGET_NS}
-            operation: sendMessage
-            target: vars.${TARGET_NS}Resp
-        - logger:
-            level: INFO
-            message: '#[output text/plain --- ''Sent, SID='' ++ (vars.${TARGET_NS}Resp.sid default ''unknown'')]'
-        - transform:
-            lang: dataweave
-            script: |-
-                %dw 2.0
-                output application/json
-                ---
-                {
-                    recordsNotified: sizeOf(vars.accounts),
-                    phoneNumber: vars.phoneNumber,
-                    messageSid: vars.${TARGET_NS}Resp.sid
-                }
-    trigger:
-        http-listener:
-            method: ${TRIGGER_METHOD}
-            path: ${TRIGGER_PATH}
-YAMLEOF
+{
+    printf 'flow:\n'
+    printf '    name: %s\n' "$PROJECT_NAME"
+    printf '    trigger:\n'
+    if [ "$TRIGGER_TYPE" = "scheduler" ]; then
+        printf '        scheduler:\n'
+        printf '            frequency: %s\n' "$(spec '.trigger.frequency // 5')"
+        printf '            timeUnit: %s\n'  "$(spec '.trigger.timeUnit // "MINUTES"')"
+        printf '            startDelay: %s\n' "$(spec '.trigger.startDelay // 0')"
+    else
+        printf '        http-listener:\n'
+        printf '            method: %s\n' "$(spec '.trigger.method // "POST"')"
+        printf '            path: %s\n'   "$(spec '.trigger.path // ("/ops/" + .projectName)')"
+    fi
+    printf '    steps:\n'
+    printf '        - source-operation:\n'
+    printf '            connector: %s\n' "$SOURCE_PREFIX"
+    printf '            operation: %s\n' "$SOURCE_OPERATION"
+    printf '            target: vars.records\n'
+    printf '        - target-operation:\n'
+    printf '            connector: %s\n' "$TARGET_PREFIX"
+    printf '            operation: %s\n' "$TARGET_OPERATION"
+    printf '            target: vars.targetResp\n'
+} > "$GO_FLOW_YAML"
 echo "✅ wrote $GO_FLOW_YAML"
 
 # ----------------------------------------------------------------------
 # 5. README.md — short developer guide
 # ----------------------------------------------------------------------
 README="$PROJECT_DIR/README.md"
-SUMMARY=$(jq -r '.summary // "Mule application generated by build-mule-app-claude-poc."' "$SPEC")
-cat > "$README" <<MDEOF
-# ${PROJECT_NAME}
-
-${SUMMARY}
-
-## Run on the Go runtime
-
-\`\`\`bash
-go-runtime --xml-flows ./src/main/mule \\
-           --xml-properties ./src/main/resources/config.yaml
-\`\`\`
-
-## Test
-
-\`\`\`bash
-curl -X ${TRIGGER_METHOD} http://localhost:8081${TRIGGER_PATH} \\
-  -H "Content-Type: application/json" \\
-  -d '{"limit": 5, "phoneNumber": "+15105551212"}'
-\`\`\`
-
-## Configuration
-
-Fill in the placeholders in \`src/main/resources/config.yaml\` (or set them via
-environment variables) before running.
-MDEOF
+SUMMARY=$(spec '.summary // "Mule application generated by build-mule-app-claude-poc."')
+{
+    printf '# %s\n\n%s\n\n' "$PROJECT_NAME" "$SUMMARY"
+    printf '## Run on the Go runtime\n\n'
+    printf '```bash\ngo-runtime --xml-flows ./src/main/mule \\\n'
+    printf '           --xml-properties ./src/main/resources/config.yaml\n```\n\n'
+    if [ "$TRIGGER_TYPE" = "http-listener" ]; then
+        TRIGGER_METHOD=$(spec '.trigger.method // "POST"')
+        TRIGGER_PATH=$(spec '.trigger.path // ("/ops/" + .projectName)')
+        printf '## Test\n\n```bash\n'
+        printf 'curl -X %s http://localhost:8081%s \\\n' "$TRIGGER_METHOD" "$TRIGGER_PATH"
+        printf '  -H "Content-Type: application/json" \\\n'
+        printf '  -d %s\n```\n\n' "'{\"limit\": 5, \"phoneNumber\": \"+15105551212\"}'"
+    else
+        printf '## Schedule\n\nThe scheduler fires every %s %s. Set `app.limit` and `app.phoneNumber` in `src/main/resources/config.yaml` before starting the runtime.\n\n' "$(spec '.trigger.frequency // 5')" "$(spec '.trigger.timeUnit // "MINUTES"')"
+    fi
+    printf '## Configuration\n\nFill in the placeholders in `src/main/resources/config.yaml` (or set them via environment variables) before running.\n'
+} > "$README"
 echo "✅ wrote $README"
 
 # ----------------------------------------------------------------------
@@ -476,6 +487,35 @@ ABS_PROJECT=$(cd "$PROJECT_DIR" && pwd)
 mkdir -p "$(dirname "$ACB_LINK_FILE")"
 printf 'acb://open?path=%s\n' "$ABS_PROJECT" > "$ACB_LINK_FILE"
 echo "✅ wrote $ACB_LINK_FILE"
+
+# ----------------------------------------------------------------------
+# 7. Validate XML against the connector XSDs (warn-only)
+# ----------------------------------------------------------------------
+if command -v xmllint >/dev/null 2>&1; then
+    SOURCE_NICK=$(spec '.connectors.source.nickname // ""')
+    TARGET_NICK=$(spec '.connectors.target.nickname // ""')
+    SOURCE_XSD="$METADATA_DIR/${SOURCE_NICK}.xsd"
+    TARGET_XSD="$METADATA_DIR/${TARGET_NICK}.xsd"
+    XSD_FILES=()
+    [ -f "$SOURCE_XSD" ] && XSD_FILES+=("$SOURCE_XSD")
+    [ -f "$TARGET_XSD" ] && [ "$TARGET_XSD" != "$SOURCE_XSD" ] && XSD_FILES+=("$TARGET_XSD")
+
+    if [ ${#XSD_FILES[@]} -gt 0 ]; then
+        # xmllint --schema validates against ONE schema at a time and
+        # complains about elements outside that schema. We only run a
+        # well-formedness check (--noout) here — a true cross-schema
+        # validation would need an aggregate XSD which is out of scope
+        # for this POC.
+        if xmllint --noout "$FLOW_XML" 2>/dev/null; then
+            echo "✅ XML is well-formed"
+        else
+            echo "⚠️  XML failed well-formedness check — see xmllint output below" >&2
+            xmllint --noout "$FLOW_XML" || true
+        fi
+    fi
+else
+    echo "ℹ️  xmllint not installed — skipping XML well-formedness check"
+fi
 
 echo ""
 echo "🎉 Project scaffolded at: $PROJECT_DIR"

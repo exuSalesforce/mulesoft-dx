@@ -62,20 +62,21 @@ mkdir -p "$METADATA_DIR" "$ERRORS_DIR"
 
 OUT_JSON="$METADATA_DIR/${NICKNAME}.json"
 ERR_JSON="$ERRORS_DIR/${NICKNAME}.json"
+XSD_FILE="$METADATA_DIR/${NICKNAME}.xsd"
 
-if ! rds_get "/connectors/${CONNECTOR_ID}" "$OUT_JSON"; then
+if ! rds_get "/connectors/${CONNECTOR_ID}/descriptor" "$OUT_JSON"; then
     exit 1
 fi
 
-# Sanity-check the response shape — bail out early with a clear error
-# rather than letting Step 9's scaffolder fail mysteriously when an
-# expected field is missing.
+# Sanity-check the response shape. The Go-runtime RDS returns
+#   { "name": "...", "version": "...", "extensionModel": {...}, "dsl": {...}, "xsd": "<xs:schema...>" }
+# extensionModel + dsl + xsd are the three artifacts the scaffolder needs.
 if ! jq -e 'type == "object"' "$OUT_JSON" >/dev/null 2>&1; then
     echo "❌ Connector descriptor is not a JSON object" >&2
     cat "$OUT_JSON" >&2
     exit 1
 fi
-for required in namespace operations configs; do
+for required in extensionModel dsl xsd; do
     if ! jq -e --arg k "$required" 'has($k)' "$OUT_JSON" >/dev/null 2>&1; then
         echo "❌ Connector descriptor missing required field '$required'" >&2
         cat "$OUT_JSON" >&2
@@ -83,27 +84,42 @@ for required in namespace operations configs; do
     fi
 done
 
+# Pull the XSD out into its own file so xmllint can validate the
+# scaffolded XML against it later.
+jq -r '.xsd' "$OUT_JSON" > "$XSD_FILE"
+
 # Persist the connector-wide error-type whitelist as a compact slice so a
 # future validator script can read it without re-parsing the whole
 # descriptor.
-jq '{errorTypes: (.errorTypes // [])}' "$OUT_JSON" > "$ERR_JSON"
+jq '{errorTypes: (.extensionModel.errors // [] | map(.type))}' "$OUT_JSON" > "$ERR_JSON"
 
 echo "✅ $NICKNAME → $OUT_JSON"
+echo "   xsd    → $XSD_FILE"
 echo "   errors → $ERR_JSON"
 echo ""
 echo "--- describe digest ---"
-# operations and sources can run into the hundreds. Show counts and
-# heads. configs include providers' names so Step 6 can ask the user
-# which to use; full provider schemas are in the descriptor file.
-jq -r '{
-  namespace_prefix: (.namespace.prefix // .namespace),
-  configs: (.configs // [] | map({
+# Twilio has 196 ops; show name + count, sample first 20.
+jq '{
+  name:    .name,
+  version: .version,
+  namespace_prefix: (.extensionModel.xmlDsl.prefix // null),
+  namespace_uri:    (.extensionModel.xmlDsl.namespace // null),
+  schema_location:  (.extensionModel.xmlDsl.schemaLocation // null),
+  configs: (.extensionModel.configurations // [] | map({
     name: .name,
     providers: ((.connectionProviders // []) | map(.name))
   })),
-  operations_count: ((.operations // []) | length),
-  operations_sample: ((.operations // []) | if length > 20 then .[0:20] + ["... (see " + "'"$OUT_JSON"'" + " for full list)"] else . end),
-  sources_count: ((.sources // []) | length),
-  sources_sample: ((.sources // []) | if length > 20 then .[0:20] + ["..."] else . end),
-  error_types: (.errorTypes // [])
-}' "$OUT_JSON"
+  operations_count: ((.extensionModel.configurations[0].operationModels // []) | length),
+  operations_sample: (
+    (.extensionModel.configurations[0].operationModels // [])
+    | map(.name)
+    | if length > 20 then .[0:20] + ["... (see " + $out + " for the full list)"] else . end
+  ),
+  sources_count: ((.extensionModel.configurations[0].sourceModels // []) | length),
+  sources_sample: (
+    (.extensionModel.configurations[0].sourceModels // [])
+    | map(.name)
+    | if length > 20 then .[0:20] + ["..."] else . end
+  ),
+  error_types: (.extensionModel.errors // [] | map(.type))
+}' --arg out "$OUT_JSON" "$OUT_JSON"

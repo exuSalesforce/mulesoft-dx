@@ -29,45 +29,52 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 QUERY="${1:-}"
 OUT_FILE="${LIST_CONNECTORS_OUT:-tmp/connectors-list.json}"
+RAW_FILE="${OUT_FILE%.json}.raw.json"
 mkdir -p "$(dirname "$OUT_FILE")"
 
+# The Go-runtime RDS does not implement server-side filtering — it always
+# returns the full catalog. We fetch the catalog and filter client-side
+# below.
+if ! rds_get "/connectors" "$RAW_FILE"; then
+    exit 1
+fi
+
+# Response shape is { "connectors": [{ "name": "salesforce", "operations": [...] }, ...] }.
+# Unwrap to a flat array so downstream callers don't have to know about the
+# envelope.
+if ! jq -e '.connectors | type == "array"' "$RAW_FILE" >/dev/null 2>&1; then
+    echo "❌ Remote Design Service /connectors response missing .connectors array" >&2
+    cat "$RAW_FILE" >&2
+    exit 1
+fi
+
 if [ -n "$QUERY" ]; then
-    # URL-encode the query value with jq (handles spaces, special chars)
-    ENCODED=$(printf '%s' "$QUERY" | jq -sRr '@uri')
-    PATH_AND_QUERY="/connectors?q=$ENCODED"
+    QUERY_LOWER=$(printf '%s' "$QUERY" | tr '[:upper:]' '[:lower:]')
+    jq --arg q "$QUERY_LOWER" '
+        .connectors
+        | map(select((.name | ascii_downcase) | contains($q)))
+    ' "$RAW_FILE" > "$OUT_FILE"
 else
-    PATH_AND_QUERY="/connectors"
-fi
-
-if ! rds_get "$PATH_AND_QUERY" "$OUT_FILE"; then
-    exit 1
-fi
-
-if ! jq -e 'type == "array"' "$OUT_FILE" >/dev/null 2>&1; then
-    echo "❌ Remote Design Service did not return a JSON array for $PATH_AND_QUERY" >&2
-    cat "$OUT_FILE" >&2
-    exit 1
+    jq '.connectors' "$RAW_FILE" > "$OUT_FILE"
 fi
 
 COUNT=$(jq 'length' "$OUT_FILE")
 if [ "$COUNT" = "0" ]; then
     echo "No connectors matched '${QUERY:-<all>}'." >&2
-    echo "   Either the Remote Design Service has no matching connector, or the search term is wrong." >&2
+    echo "   The Remote Design Service catalog contains:" >&2
+    jq -r '.connectors[] | "    - " + .name' "$RAW_FILE" >&2
     exit 1
 fi
 
 echo "✅ $COUNT connector(s) → $OUT_FILE"
 echo ""
 echo "--- connectors ---"
-# Right-pad id and name for readability. The script's stdout is what the
-# agent reads when deciding which connector to pick (or which to surface
-# in AskUserQuestion when the list has plausible variants).
+# Columns: <name>  <ops-count>. The list endpoint does not carry a
+# description/namespace — those live in the per-connector descriptor.
 jq -r '
-  (max_by(.id | length).id | length) as $id_w |
   (max_by(.name | length).name | length) as $name_w |
   .[] | [
-    (.id   | . + (" " * ($id_w   - length))),
     (.name | . + (" " * ($name_w - length))),
-    .namespace
+    ((.operations | length | tostring) + " operations")
   ] | join("  ")
 ' "$OUT_FILE"

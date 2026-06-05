@@ -86,12 +86,12 @@ if command -v curl >/dev/null 2>&1; then
     rm -f "$HEALTH_TMP"
 
     if [ "$HEALTH_HTTP_CODE" = "200" ]; then
-        if echo "$HEALTH_BODY" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+        if echo "$HEALTH_BODY" | jq -e '.ready == true' >/dev/null 2>&1; then
             HEALTH_STATUS="ok"
             echo "✅ Remote Design Service healthy at $RDS_BASE_URL"
         else
             HEALTH_STATUS="unexpected"
-            ERRORS+=("Remote Design Service /healthz returned 200 but body was not {\"status\":\"ok\"}: $HEALTH_BODY")
+            ERRORS+=("Remote Design Service /healthz returned 200 but body was not {\"ready\":true}: $HEALTH_BODY")
         fi
     elif [ "$HEALTH_HTTP_CODE" = "000" ]; then
         ERRORS+=("Remote Design Service unreachable at $RDS_BASE_URL — curl could not connect. Start the Docker container or set RDS_BASE_URL.")

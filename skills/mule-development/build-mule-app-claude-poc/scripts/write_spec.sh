@@ -113,65 +113,132 @@ resolve_role() {
     local descriptor_file="$METADATA_DIR/${nickname}.json"
     local op_file="$METADATA_DIR/${nickname}.${operation}.json"
 
-    local descriptor='null'
-    if [ -f "$descriptor_file" ]; then
-        descriptor=$(cat "$descriptor_file")
-    elif [ -n "$connector_id" ]; then
-        echo "⚠️  No descriptor at $descriptor_file — run describe_connector.sh first." >&2
+    # Pass big descriptors via --slurpfile (file path) instead of --argjson
+    # — descriptor JSON for connectors like Twilio is several hundred KB
+    # and overflows the OS exec arg limit.
+    if [ ! -f "$descriptor_file" ]; then
+        descriptor_file="/dev/null"
+        if [ -n "$connector_id" ]; then
+            echo "⚠️  No descriptor at $METADATA_DIR/${nickname}.json — run describe_connector.sh first." >&2
+        fi
+    fi
+    if [ ! -f "$op_file" ]; then
+        op_file="/dev/null"
+        if [ -n "$operation" ]; then
+            echo "⚠️  No operation schema at $METADATA_DIR/${nickname}.${operation}.json — run describe_operation.sh first." >&2
+        fi
     fi
 
-    local op_schema='null'
-    if [ -n "$operation" ] && [ -f "$op_file" ]; then
-        op_schema=$(cat "$op_file")
-    elif [ -n "$operation" ]; then
-        echo "⚠️  No operation schema at $op_file — run describe_operation.sh first." >&2
-    fi
-
+    # --slurpfile reads the file into an array (one element per top-level
+    # JSON document); we always have exactly one document, so the helper
+    # accesses it with [0]. /dev/null produces an empty array, which the
+    # filter coalesces to null.
     jq -n \
         --argjson role_obj "$role_obj" \
-        --argjson descriptor "$descriptor" \
-        --argjson op_schema "$op_schema" \
-        '{
+        --slurpfile descriptorArr "$descriptor_file" \
+        --slurpfile opSchemaArr   "$op_file" \
+        '
+        # Helpers walk the descriptor object directly via the `.` cursor
+        # so the same definition works for any connector.
+        def find_config:
+            (.extensionModel.configurations // []) as $configs
+            | (
+                ($configs[] | select(.name == ($role_obj.config.name // ""))),
+                $configs[0]
+              ) // null;
+
+        def find_provider($cfg):
+            ($cfg.connectionProviders // []) as $providers
+            | (
+                ($providers[] | select(.name == ($role_obj.config.provider // ""))),
+                $providers[0]
+              ) // null;
+
+        def find_config_dsl($cfgName):
+            (.dsl.configurations[$cfgName] // null);
+
+        # --slurpfile yields a one-element array (or empty for /dev/null).
+        ($descriptorArr | first // null) as $d
+        | ($opSchemaArr  | first // null) as $op_schema
+        | ($d | if . == null then null else find_config end) as $cfg
+        | (if $cfg == null then null else ($d | find_provider($cfg)) end) as $provider
+        | (if $cfg == null then null else ($d | find_config_dsl($cfg.name)) end) as $cfgDsl
+        | {
             connectorId: ($role_obj.connectorId // null),
             nickname:    ($role_obj.nickname    // $role_obj.connectorId // null),
-            namespace:   ($descriptor.namespace // null),
-            config:      ($role_obj.config      // null),
-            operation:   ($role_obj.operation   // null),
-            params:      ($role_obj.params      // {}),
+            namespace:   (
+                if $d == null then null
+                else {
+                    prefix:         ($d.extensionModel.xmlDsl.prefix // null),
+                    namespace:      ($d.extensionModel.xmlDsl.namespace // null),
+                    schemaLocation: ($d.extensionModel.xmlDsl.schemaLocation // null),
+                    xsdFileName:    ($d.extensionModel.xmlDsl.xsdFileName // null)
+                }
+                end
+            ),
+            config: (
+                if $cfg == null then ($role_obj.config // null)
+                else {
+                    name:        ($role_obj.config.name // $cfg.name),
+                    elementName: ($cfgDsl.elementName // $cfg.name),
+                    provider:    (if $provider == null then null else $provider.name end)
+                }
+                end
+            ),
+            operation:   ($role_obj.operation // null),
+            params:      ($role_obj.params    // {}),
             connectionProvider: (
-                if ($descriptor // null) == null then null
-                else (
-                    ($descriptor.configs // [])[]?
-                    | select(.name == ($role_obj.config.name // ""))
-                    | (.connectionProviders // [])[]?
-                    | select(.name == ($role_obj.config.provider // ""))
-                ) // (
-                    # fallback: first config + first provider when config name is unknown
-                    ($descriptor.configs[0]?.connectionProviders[0]?) // null
-                )
+                if $provider == null then null
+                else {
+                    name:        $provider.name,
+                    elementName: ($provider.name + "-connection"),
+                    parameters: (
+                        [
+                          ($provider.parameterGroupModels // [])[]
+                          | (.parameterModels // [])[]
+                          | {
+                              name:         .name,
+                              required:     (.required // false),
+                              type:         (.type.type // null),
+                              defaultValue: (.defaultValue // null),
+                              description:  (.description // "")
+                            }
+                        ]
+                    )
+                }
+                end
             ),
             operationSchema: $op_schema,
-            errorTypes: ($descriptor.errorTypes // [])
-        }'
+            errorTypes:      (if $d == null then [] else ($d.extensionModel.errors // [] | map(.type)) end)
+          }
+        '
 }
 
-SOURCE_BLOCK=$(resolve_role source)
-TARGET_BLOCK=$(resolve_role target)
-TRIGGER_BLOCK=$(resolve_role trigger)
+# Resolved role blocks can each be hundreds of KB once the operation's
+# parameterModels are inlined, so we stage them to disk and pass paths
+# to the final consolidating jq via --slurpfile (avoids "Argument list
+# too long" at the OS level).
+TMP_RESOLVED="${TMPDIR:-/tmp}/poc-resolved.$$"
+mkdir -p "$TMP_RESOLVED"
+trap 'rm -rf "$TMP_RESOLVED"' EXIT
+
+resolve_role source  > "$TMP_RESOLVED/source.json"
+resolve_role target  > "$TMP_RESOLVED/target.json"
+resolve_role trigger > "$TMP_RESOLVED/trigger.json"
 
 SIDECAR_JSON="$SPEC_DIR/${PROJECT_NAME}.json"
 SIDECAR_MD="$SPEC_DIR/${PROJECT_NAME}.md"
 
 jq -n \
-    --slurpfile inputs "$INPUTS" \
-    --argjson source  "$SOURCE_BLOCK" \
-    --argjson target  "$TARGET_BLOCK" \
-    --argjson trigger "$TRIGGER_BLOCK" \
+    --slurpfile inputs  "$INPUTS" \
+    --slurpfile source  "$TMP_RESOLVED/source.json" \
+    --slurpfile target  "$TMP_RESOLVED/target.json" \
+    --slurpfile trigger "$TMP_RESOLVED/trigger.json" \
     '$inputs[0] + {
         connectors: {
-            source:  $source,
-            target:  $target,
-            trigger: $trigger
+            source:  ($source[0]  // null),
+            target:  ($target[0]  // null),
+            trigger: ($trigger[0] // null)
         }
     }' > "$SIDECAR_JSON"
 
@@ -190,6 +257,14 @@ jq -n \
       .trigger as $t |
       if ($t.type // "http-listener") == "http-listener" then
         "- HTTP listener at `" + ($t.method // "POST") + " " + ($t.path // "/") + "`"
+      elif $t.type == "scheduler" then
+        "- Scheduler (fixed-frequency): every "
+          + (($t.frequency // 5) | tostring) + " "
+          + (($t.timeUnit // "MINUTES") | ascii_downcase)
+          + (if ($t.startDelay // 0) > 0
+             then ", start delay " + (($t.startDelay // 0) | tostring) + " " + (($t.timeUnit // "MINUTES") | ascii_downcase)
+             else ""
+             end)
       else
         "- " + ($t.type // "<unknown>")
       end
@@ -198,8 +273,8 @@ jq -n \
 
     printf '## Source\n\n'
     jq -r '
-      .source // empty |
-      "- Connector: `" + (.connectorId // "<unset>") + "` (namespace: `" + ((.namespace.prefix // .namespace) // "<unset>") + "`)\n" +
+      .connectors.source // empty |
+      "- Connector: `" + (.connectorId // "<unset>") + "` (namespace: `" + (.namespace.prefix // "<unset>") + "`)\n" +
       "- Operation: `" + (.operation // "<unset>") + "`\n" +
       (if .params and (.params | length > 0) then
         "- Parameters:\n" + (
@@ -212,13 +287,13 @@ jq -n \
 
     printf '## Target\n\n'
     jq -r '
-      .target // empty |
-      "- Connector: `" + (.connectorId // "<unset>") + "` (namespace: `" + ((.namespace.prefix // .namespace) // "<unset>") + "`)\n" +
+      .connectors.target // empty |
+      "- Connector: `" + (.connectorId // "<unset>") + "` (namespace: `" + (.namespace.prefix // "<unset>") + "`)\n" +
       "- Operation: `" + (.operation // "<unset>") + "`\n" +
       (if .params and (.params | length > 0) then
         "- Parameters:\n" + (
           .params | to_entries
-          | map("  - **" + .key + "**: " + (.value | tostring | "\n    ```\n    " + . + "\n    ```")) | join("\n")
+          | map("  - **" + .key + "**: `" + (.value | tostring) + "`") | join("\n")
         )
        else "" end)
     ' "$SIDECAR_JSON"
@@ -226,16 +301,25 @@ jq -n \
 
     printf '## Configuration the user must fill in (after Open in ACB)\n\n'
     jq -r '
-      def provider_keys($block):
-        ($block.connectionProvider.attributes // [])
+      def provider_keys($block; $prefix):
+        ($block.connectionProvider.parameters // [])
         | map(select(.required == true))
-        | map(.attributeName);
+        | map($prefix + "." + .name);
 
-      [
-        ( provider_keys(.connectors.source)  | map(((.connectors.source.connectorId  // "source")  + "." + .)) ),
-        ( provider_keys(.connectors.target)  | map(((.connectors.target.connectorId  // "target")  + "." + .)) ),
-        ( provider_keys(.connectors.trigger) | map(((.connectors.trigger.connectorId // "trigger") + "." + .)) )
-      ]
+      def trigger_keys:
+        if (.trigger.type // "http-listener") == "scheduler" then
+          ["app.limit", "app.phoneNumber"]
+        else
+          ["http.host", "http.port"]
+        end;
+
+      .connectors.source as $src
+      | .connectors.target as $tgt
+      | [
+          provider_keys($src; ($src.namespace.prefix // $src.connectorId // "source")),
+          provider_keys($tgt; ($tgt.namespace.prefix // $tgt.connectorId // "target")),
+          trigger_keys
+        ]
       | add
       | unique
       | map("- `" + . + "`")
