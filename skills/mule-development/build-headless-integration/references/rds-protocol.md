@@ -84,11 +84,39 @@ Response (200):
 
 The skill's [scripts/list_rds_connectors.sh](../scripts/list_rds_connectors.sh) calls this and treats 404 as "stub mode, here's an empty list".
 
-### `GET /v1/connectors/{name}/extension-model`
+### `GET /v1/connectors/{name}/descriptor`
 
-Return the connector's `extension-model.json` (the full JSON-serialized `ExtensionModel`). Source of truth is RDS's bundles directory (`--bundles-dir`, default `/bundles` in the container). The local Node stub does NOT implement this endpoint — only the real Go RDS does.
+Return all three design-time artifacts (extension-model + dsl + xsd) in **one atomic response**. This is the endpoint the ACB plugin's [`ManifestRdsExtensionModelSource`](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java) and the skill's [`fetch_bundle.sh`](../scripts/fetch_bundle.sh) call. One request per connector, no consistency window across three files. Local Node stub does NOT implement this — only the real Go RDS does.
 
-Why it matters: lets the skill describe any connector RDS knows about without shipping bundles in `fixtures/go-connectors/`. The skill's [scripts/fetch_bundle.sh](../scripts/fetch_bundle.sh) calls this when a local fixture is absent.
+```http
+GET /v1/connectors/twilio/descriptor
+→ 200 application/json
+
+{
+  "name": "twilio",
+  "version": "4.2.9",
+  "extensionModel": { ... },   // verbatim extension-model.json (object, not string)
+  "dsl": { ... } | null,       // verbatim dsl.json, or null when the connector ships none
+  "xsd": "<?xml ... ?>"        // verbatim extension.xsd text (XML, not JSON)
+}
+
+GET /v1/connectors/<unknown>/descriptor
+→ 404 { "error": "bundle not found", "connector": "<name>", "file": "extension-model.json" }
+```
+
+Bundle layout under `--bundles-dir` (both supported transparently):
+
+```
+<bundles-dir>/<name>/extension-model.json              ← canonical (curated bundle)
+<bundles-dir>/<name>/testdata/extension-model.json     ← go-runtime/connectors/<name>/testdata/
+<bundles-dir>/<name>/testdata/extension-model-go.json  ← Go-emitter output, fallback
+```
+
+In docker-compose, RDS mounts `../connectors:/bundles:ro` so the unchanged `connectors/<name>/testdata/` layout works directly.
+
+### `GET /v1/connectors/{name}/extension-model` (per-artifact, secondary)
+
+Return the connector's `extension-model.json` only. Useful for clients that already have the other two artifacts cached and want to refresh just the model. Use `/descriptor` for the standard render path.
 
 ```http
 GET /v1/connectors/twilio/extension-model
@@ -108,9 +136,9 @@ Bundle layout under `--bundles-dir` (both supported transparently):
 
 In docker-compose, RDS mounts `../connectors:/bundles:ro` so the unchanged `connectors/<name>/testdata/` layout works directly.
 
-### `GET /v1/connectors/{name}/dsl`
+### `GET /v1/connectors/{name}/dsl` (per-artifact, secondary)
 
-Return the connector's `dsl.json` (DSL element-name resolution). Same source/storage as `/extension-model`. Required alongside it for the skill's digest helper to surface XML element names.
+Return the connector's `dsl.json` only. Same caveat as `/extension-model` above — `/descriptor` is the standard path.
 
 ```http
 GET /v1/connectors/twilio/dsl

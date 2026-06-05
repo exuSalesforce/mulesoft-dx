@@ -29,6 +29,6 @@ When more bundles land, add a row above and copy the bundle into `fixtures/go-co
 
 ## Drift watch
 
-The bundle layout is governed by [DefaultJsonExtensionModelSource.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/DefaultJsonExtensionModelSource.java). If the Java side changes its expected file names, `.go-connectors.json` schema, or per-bundle structure, this skill must follow.
+The descriptor source on the plugin side is [`ManifestRdsExtensionModelSource`](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java) (it replaced the retired `DefaultJsonExtensionModelSource`/`.go-connectors.json` flow). It reads `project-manifest.json`, then for each connector name resolves cache-first under `~/AnypointCodeBuilder/.cache/go/<name>/`, falling back to `GET /v1/connectors/{name}/descriptor`. The skill mirrors this exactly via `fetch_bundle.sh`. If file names or directory layout change on the plugin side, follow.
 
 If `extension-model.json`'s top-level shape changes (e.g. operations move out of `.configurations[0].operationModels`), update [helpers/digest_extension_model.mjs](../helpers/digest_extension_model.mjs).

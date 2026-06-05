@@ -38,7 +38,7 @@ If the right path is ambiguous, ask the user once with `AskUserQuestion`: "Headl
 
 ## Architecture (one paragraph)
 
-Connector metadata comes from `.go-connectors.json` bundles read directly from disk (no service call). Test-connection goes through the Remote Design Service (RDS) over HTTP — `POST /v1/test-connection`, exactly the wire contract enforced by [HttpRemoteDesignServiceClient.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/designservice/rds/HttpRemoteDesignServiceClient.java) and verified in [testConnection.integration.test.ts](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-vscode/src/test-emulator/test/testConnection.integration.test.ts). When the real Go RDS isn't available, the skill spawns a local Node stub that satisfies the same contract; swap in a real RDS by setting `MULE_DX_RDS_URL`. The project produced has no `pom.xml` deps for connectors — it carries a `.mule/project.json` with `goConnectors[]` plus a stub `pom.xml` so today's `WorkspaceManagerImpl` can still open it.
+Connector descriptors come from RDS by name — `GET /v1/connectors/{name}/descriptor` returns the three artifacts (`extension-model.json`, `dsl.json`, `extension.xsd`) atomically. The skill writes them through to `~/AnypointCodeBuilder/.cache/go/<name>/`, the same warm cache the ACB plugin's [ManifestRdsExtensionModelSource](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java) reads on project-open. A local `fixtures/go-connectors/<name>/` lookup short-circuits the network call when present (offline). Test-connection still goes through `POST /v1/test-connection`, the wire contract enforced by [HttpRemoteDesignServiceClient.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/designservice/rds/HttpRemoteDesignServiceClient.java). The project the skill produces matches the shape that the upgrade-to-versionless flow ([DefaultProjectPropertiesService.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/project/DefaultProjectPropertiesService.java)) writes when migrating an existing Maven project: `project-manifest.json` (sibling of `pom.xml`, name-only connector list) plus a stub `pom.xml` so today's `WorkspaceManagerImpl` can still open the project.
 
 ---
 
@@ -78,19 +78,22 @@ Layout under `WS_DIR`:
 │   └── design-spec.json
 └── <projectName>/                                # the generated Mule project (open this in ACB)
     ├── .mule/project.json
-    ├── .go-connectors.json
-    ├── go-connectors/<bundle>/
+    ├── project-manifest.json                     # name-only connector list (matches upgrade-to-versionless output)
     ├── mule-artifact.json
-    ├── pom.xml
+    ├── pom.xml                                   # stub; goes away when WorkspaceManagerImpl supports no-pom
     └── src/main/{mule,resources}/...
+
+~/AnypointCodeBuilder/.cache/go/<name>/           # warm cache (extension-model + dsl + xsd)
+                                                  # populated by fetch_bundle.sh; read on project-open by
+                                                  # ManifestRdsExtensionModelSource (no per-project bundles)
 ```
 
 The split-file shape under `connector-metadata/` and `connector-errors/` mirrors what
 [build-mule-integration's tmp/](file:///Users/tzeree/Salesforce/workspace/mulesoft-dx/skills/mule-development/build-mule-integration) produces — any tool that reads either skill's tmp/ shape works against ours too.
 
-Override per session if needed: `WS_DIR=/some/other/path bash scripts/<name>.sh`. All scripts honor it.
+Override per session if needed: `WS_DIR=/some/other/path bash scripts/<name>.sh`. All scripts honor it. `ACB_HOME` overrides the cache root (default `~/AnypointCodeBuilder`).
 
-The user opens `$WS_DIR/<projectName>/` in ACB after Step 10 — never `tmp/`.
+The user opens `$WS_DIR/<projectName>/` in ACB after Step 10 — never `tmp/`. ACB then reads `project-manifest.json`, sees connector names, hits the warm `~/AnypointCodeBuilder/.cache/go/<name>/` for descriptors, and the canvas renders.
 
 ---
 
@@ -106,11 +109,11 @@ Invoke each script with the `Bash` tool. State persists under `$WS_DIR/tmp/` so 
 | `scripts/stop_rds_stub.sh` | Cleanup — stops the local stub if we managed it. No-op for external/real backends. | — |
 | `scripts/list_rds_connectors.sh` | Probe `GET /v1/connectors` — list which connector binaries the running ConnectivityService has loaded. Real RDS only; stub returns 404 (handled gracefully). | stdout JSON |
 | `scripts/search_connectors.sh <term>` | Step 4 — list bundles matching a term (`name`, `prefix`, or directory) from `fixtures/go-connectors/`. Format: `<bundle>\t<name>\t<version>\t<vendor>\t<prefix>` per line. | stdout |
-| `scripts/pick_connector.sh <nick> <bundle>` | Step 4 — record the picked Go bundle (resolves prefix, namespace, schemaLocation). Resolution goes through `fetch_bundle.sh` so the bundle can come from `fixtures/go-connectors/<bundle>/` (local) or be fetched live from RDS. | `tmp/connector-choices/<nick>.json` |
-| `scripts/fetch_bundle.sh <name>` | Resolve a connector bundle to a directory. Tries `fixtures/go-connectors/<name>/` first, then falls back to `GET /v1/connectors/<name>/{extension-model,dsl}` and caches under `tmp/connector-fetched/<name>/`. Used by `pick_connector.sh`. Stub backend always returns 404 here — only the real Go RDS implements these endpoints. | resolved bundle dir on stdout |
+| `scripts/pick_connector.sh <nick> <bundle>` | Step 4 — record the picked Go connector (resolves prefix, namespace, schemaLocation). Bundle resolution goes through `fetch_bundle.sh` (cache → fixture → RDS `/descriptor`). | `tmp/connector-choices/<nick>.json` |
+| `scripts/fetch_bundle.sh <name>` | Resolve a connector bundle to a directory. Tries `~/AnypointCodeBuilder/.cache/go/<name>/` (the same warm cache the ACB plugin reads on project-open), then `fixtures/go-connectors/<name>/`, then `GET /v1/connectors/<name>/descriptor` (atomic 3-in-1 response) with write-through to the cache. Used by `pick_connector.sh`. Stub backend returns 404 here; only the real Go RDS implements `/descriptor`. | resolved bundle dir on stdout |
 | `scripts/describe_connector.sh <nick>` | Step 5 — generate the rich digest + split it into the per-shape file family build-mule-integration produces (flat reference, per-op metadata, per-config metadata, error whitelists). Stdout lists each operation/source/provider with its **DSL element name** (sourced from the bundle's `dsl.json`) and required-param set. | `tmp/connector-metadata/<nick>-digest.json` (rich), `tmp/connector-metadata/<nick>.json` (flat reference), `tmp/connector-metadata/<nick>-<op>.json` (per-op), `tmp/connector-metadata/<nick>-config.json` (per-config), `tmp/connector-errors/<nick>.json` + `<nick>.<op>.json` |
 | `scripts/commit_design_spec.sh` | Step 9 — read agent-supplied design spec on stdin; merge picks into `tmp/design-spec.json` | `tmp/design-spec.json` |
-| `scripts/create_versionless_project.sh <projectDir>` | Step 9 — write `.mule/project.json`, stub `pom.xml`, `mule-artifact.json`, `.go-connectors.json`, copy bundles, `config.yaml` | project on disk |
+| `scripts/create_versionless_project.sh <projectDir>` | Step 9 — write `.mule/project.json`, `project-manifest.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml`. No bundles inside the project — they live in the warm cache (`~/AnypointCodeBuilder/.cache/go/<name>/`), pre-warmed during this step. | project on disk + cache pre-warmed |
 | `scripts/validate_generated_flow_xml.sh <projectDir>` | Step 9.5 — validate the generated flow XML against the connector digests: schemaLocation pairs, known DSL element names, error types in `<on-error-propagate>`, `config-ref` resolution, `${...}` placeholders matching `config.yaml` keys. Cheap analogue of `validate_before_build.sh` from the build-mule-integration skill. | exit 0 on success; non-zero with stderr report on failure |
 
 The agent generates the flow XML inline at Step 9 — bash does not call an LLM. The connector digest in `tmp/connector-metadata/<nick>.json` is the input.
@@ -234,7 +237,7 @@ Present prose summarizing:
 - **Trigger** (kind + parameters).
 - **Connectors picked** (each as `<bundle>` → `<prefix>:<config-element>`).
 - **Connection providers** (one per connector, with required fields the user must fill in).
-- **Project layout** that will be written: `.mule/project.json`, `.go-connectors.json`, `go-connectors/<bundle>/`, `src/main/mule/<projectName>.xml`, `src/main/resources/config.yaml`, stub `pom.xml`.
+- **Project layout** that will be written: `.mule/project.json`, `project-manifest.json`, `mule-artifact.json`, stub `pom.xml`, `src/main/mule/<projectName>.xml`, `src/main/resources/config.yaml`. Connector descriptors are NOT copied into the project — they live in the warm cache at `~/AnypointCodeBuilder/.cache/go/<name>/`.
 
 Then ask: **"Proceed to build?"** Wait for an explicit affirmative before Step 9.
 

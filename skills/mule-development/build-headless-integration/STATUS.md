@@ -56,7 +56,7 @@ Reference contracts:
 ### Phase 2 — Build
 
 - [`scripts/commit_design_spec.sh`](scripts/commit_design_spec.sh) — merge picks into `tmp/design-spec.json`
-- [`scripts/create_versionless_project.sh`](scripts/create_versionless_project.sh) — emits `.mule/project.json`, stub `pom.xml`, `mule-artifact.json`, `.go-connectors.json`, copies bundles, dot-keyed `config.yaml` with env-var defaults + `# allowed: ...` / `# default: ...` comments inline
+- [`scripts/create_versionless_project.sh`](scripts/create_versionless_project.sh) — emits `project-manifest.json` (name-only, matches upgrade-to-versionless output), `.mule/project.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml` with env-var defaults + `# allowed: ...` / `# default: ...` comments. Pre-warms `~/AnypointCodeBuilder/.cache/go/<name>/` so the ACB plugin's [ManifestRdsExtensionModelSource](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java) renders the canvas without a fresh RDS fetch.
 - [`scripts/validate_generated_flow_xml.sh`](scripts/validate_generated_flow_xml.sh) — five checks: schemaLocation pairs, known DSL elements, error types, `config-ref` resolution, `${...}` placeholder coverage
 - ~~`scripts/visualize_flow.sh`~~ — removed; an MCP flow-render tool will own visualization (see "Pending → MCP flow renderer")
 
@@ -84,9 +84,10 @@ Reference contracts:
 
 `~/Salesforce/projects/headless/salesforce-accounts-to-twilio-headless/` produced from the skill, with:
 
-- `.mule/project.json` carrying `goConnectors[]` for both connectors
+- `project-manifest.json` carrying name-only connector list (matches what upgrade-to-versionless produces)
+- `.mule/project.json` (workspace descriptor; no connector list — that moved to the manifest)
 - Stub `pom.xml` mirroring the reference layout
-- `.go-connectors.json` + `go-connectors/{salesforce,twilio}/`
+- `~/AnypointCodeBuilder/.cache/go/{salesforce,twilio}/` pre-warmed (the ACB plugin reads from this exact path)
 - `mule-artifact.json` (minimal shape: `minMuleVersion` + `javaSpecificationVersions`)
 - Dot-keyed `config.yaml` with env-var defaults for both connectors
 - Multi-connector flow XML following the reference pattern
@@ -111,9 +112,9 @@ Reference contracts:
 
 These are tracked in [`references/project-json-schema.md`](references/project-json-schema.md) — none block Demo 2 because of the stub `pom.xml` fallback:
 
-- [`DefaultProjectDescriptor.java`](file:///Users/tzeree/Salesforce/workspace/mule-dx-vscode/mule-dx-platform/src/main/java/org/mule/dx/platform/internal/api/impl/DefaultProjectDescriptor.java) — add `muleVersion`, `javaVersion`, `dependencies`, `goConnectors`, `sharedLibraries`. Make `source` nullable.
+- [`DefaultProjectDescriptor.java`](file:///Users/tzeree/Salesforce/workspace/mule-dx-vscode/mule-dx-platform/src/main/java/org/mule/dx/platform/internal/api/impl/DefaultProjectDescriptor.java) — add `muleVersion`, `javaVersion`, `dependencies`, `sharedLibraries`. Make `source` nullable. (Connectors are NOT a field here — they live in the sibling `project-manifest.json`, read by [ProjectManifest.java](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/project/ProjectManifest.java).)
 - [`DefaultProjectDescriptorBuilder.java`](file:///Users/tzeree/Salesforce/workspace/mule-dx-vscode/mule-dx-platform/src/main/java/org/mule/dx/platform/internal/api/impl/DefaultProjectDescriptorBuilder.java) — builder methods for new fields.
-- [`WorkspaceManagerImpl.java`](file:///Users/tzeree/Salesforce/workspace/mule-dx-vscode/mule-dx-platform/src/main/java/org/mule/dx/platform/internal/WorkspaceManagerImpl.java) — branch on versionless: skip the pom.xml requirement when `descriptor.dependencies != null` or `descriptor.goConnectors != null`.
+- [`WorkspaceManagerImpl.java`](file:///Users/tzeree/Salesforce/workspace/mule-dx-vscode/mule-dx-platform/src/main/java/org/mule/dx/platform/internal/WorkspaceManagerImpl.java) — branch on versionless: skip the pom.xml requirement when a sibling `project-manifest.json` is present.
 
 When this lands the skill drops the stub `pom.xml` emit.
 
