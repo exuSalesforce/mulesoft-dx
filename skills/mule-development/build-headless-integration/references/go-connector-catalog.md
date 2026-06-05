@@ -1,34 +1,39 @@
-# Go-connector catalog (Demo 2)
+# Go-connector catalog
 
-Inventory of Go-connector bundles shipped with this skill at
-[fixtures/go-connectors/](../fixtures/go-connectors/). Each bundle directory holds:
+The skill no longer ships local connector bundles. The live catalog is whatever RDS reports via `GET /v1/connectors` — derived from [`connector-service/config.yaml`](file:///Users/tzeree/Salesforce/workspace/go-runtime/services/connector-service/config.yaml) on the running stack.
 
-- `extension-model.json` — JSON-serialized `ExtensionModel` describing the connector
-- `dsl.json` — DSL element syntax (XML element names, namespaces, schemas)
-- `extension.xsd` — XSD for editor schema-aware features
+## Live query
 
-The skill reads these directly — there is no service call to look them up.
+```bash
+bash scripts/list_rds_connectors.sh
+# → { "connectors": [ { "name": "...", "operations": [...] }, ... ] }
+```
 
-## Inventory
+`search_connectors.sh <term>` filters that list by substring on the name.
 
-| Bundle | Connector | Prefix | Config element | Providers | Source | Real-RDS loaded? |
-| --- | --- | --- | --- | --- | --- | --- |
-| `salesforce` | Salesforce | `salesforce` | `salesforce:sfdc-config` | `basic`, `jwt`, `saml` | mule-dx-mule-dev-plugin/src/test/resources/go-connectors/salesforce | only when `connector-service/config.yaml` registers it (default = no) |
-| `twilio` | Twilio | `twilio` | `twilio:config` | `account-sid-auth-token` | go-runtime/connectors/twilio/testdata | ✅ yes (default) |
+## What ships in the running stack today
 
-The "Real-RDS loaded?" column matters when running against the real RDS stack (`start_rds_stub.sh --real`). The local Node stub doesn't care — it accepts any connector name. When the real RDS stack is up, only the connectors registered in [go-runtime/services/connector-service/config.yaml](file:///Users/tzeree/Salesforce/workspace/go-runtime/services/connector-service/config.yaml) are actually loaded; calls for others come back with "connector not loaded". Twilio is the demo target for live verification because it ships a working `.wasm` and a single connection provider.
+The default `connector-service/config.yaml` registers three connectors. Their providers (from `extension-model.json`):
 
-When more bundles land, add a row above and copy the bundle into `fixtures/go-connectors/<name>/`. The agent's `search_connectors.sh` discovers them automatically — this table is just for human reference.
+| Name | Prefix (XML) | Config element | Connection providers |
+| --- | --- | --- | --- |
+| `salesforce` | `salesforce` | `salesforce:sfdc-config` | `basic`, `jwt`, `saml` |
+| `twilio` | `twilio` | `twilio:config` | `account-sid-auth-token` |
+| `http` | `http` | `http:request-config` (request side); `http:listener-config` (listener side, in core) | `http:request-connection` |
 
-## Adding a new bundle
+These are derived at runtime — re-confirm against the live RDS for any new connector before generating a flow.
 
-1. Drop the three files under `fixtures/go-connectors/<bundle-name>/`.
-2. Confirm `bash scripts/search_connectors.sh <name-or-prefix>` lists it.
-3. Confirm `bash scripts/pick_connector.sh test-nick <bundle-name>` and `bash scripts/describe_connector.sh test-nick` produce a sensible digest.
-4. Add a row to the table above.
+## Adding a new connector
+
+This is **not a skill-side concern**. To add a connector to the catalog:
+
+1. Build the connector module + descriptor under `go-runtime/connectors/<name>/`.
+2. Add it to `services/connector-service/config.yaml` with `module:` (path to .wasm) and `descriptor_dir:` (path to its descriptor folder).
+3. Mount the descriptor folder into `connector-service` via `deploy/docker-compose.yaml`.
+4. Restart the stack (`./start-rds.sh --rebuild`).
+
+Once the connector shows up in `list_rds_connectors.sh`, the skill discovers it automatically — no skill change needed.
 
 ## Drift watch
 
-The descriptor source on the plugin side is [`ManifestRdsExtensionModelSource`](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java) (it replaced the retired `DefaultJsonExtensionModelSource`/`.go-connectors.json` flow). It reads `project-manifest.json`, then for each connector name resolves cache-first under `~/AnypointCodeBuilder/.cache/go/<name>/`, falling back to `GET /v1/connectors/{name}/descriptor`. The skill mirrors this exactly via `fetch_bundle.sh`. If file names or directory layout change on the plugin side, follow.
-
-If `extension-model.json`'s top-level shape changes (e.g. operations move out of `.configurations[0].operationModels`), update [helpers/digest_extension_model.mjs](../helpers/digest_extension_model.mjs).
+The descriptor source on the plugin side is [`ManifestRdsExtensionModelSource`](file:///Users/tzeree/Salesforce/workspace/mule-dx-mule-dev-component/mule-dx-mule-dev-plugin/src/main/java/org/mule/contribution/internal/extension/json/ManifestRdsExtensionModelSource.java). It reads `project-manifest.json`, then for each connector name resolves cache-first under `~/AnypointCodeBuilder/.cache/go/<name>/`, falling back to `GET /v1/connectors/{name}/descriptor`. The skill mirrors this exactly via `fetch_bundle.sh`. If file names or directory layout change on the plugin side, follow.

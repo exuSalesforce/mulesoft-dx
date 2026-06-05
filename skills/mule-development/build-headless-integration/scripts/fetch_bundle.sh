@@ -5,13 +5,17 @@
 # does — see go-connector-headless-descriptors.md §6):
 #
 #   1. $ACB_HOME/.cache/go/<name>/    — warm cache (the same dir the plugin uses)
-#   2. fixtures/go-connectors/<name>/ — bundle shipped with the skill (offline)
-#   3. RDS GET /v1/connectors/<name>/descriptor
+#   2. RDS GET /v1/connectors/<name>/descriptor
 #      → cached to $ACB_HOME/.cache/go/<name>/{extension-model.json,dsl.json,extension.xsd}
 #
 # The rest of the skill only sees a directory path. Caching to $ACB_HOME/.cache/go
 # (the same place the plugin reads from on project-open) means a project we
 # generate has its descriptors hot-cached for the canvas with no extra step.
+#
+# This skill ships no local connector bundles. To pre-populate the cache from
+# RDS once (so subsequent picks succeed offline), run:
+#   bash scripts/seed_cache.sh <name>...
+#   bash scripts/seed_cache.sh --from-rds   # all connectors RDS reports
 #
 # Usage: fetch_bundle.sh <name>
 #   exits 0 with the resolved directory path on stdout
@@ -44,18 +48,11 @@ if [[ -f "$CACHED/extension-model.json" ]]; then
   exit 0
 fi
 
-# 2. Local fixture (offline path).
-LOCAL="$SKILL_DIR/fixtures/go-connectors/$NAME"
-if [[ -f "$LOCAL/extension-model.json" ]]; then
-  echo "$LOCAL"
-  exit 0
-fi
-
-# 3. RDS — single /descriptor call returns all three artifacts atomically.
+# 2. RDS — single /descriptor call returns all three artifacts atomically.
 RDS_JSON="$TMP_DIR/rds.json"
 if [[ ! -f "$RDS_JSON" ]]; then
-  echo "no warm cache, no local fixture, and no RDS endpoint recorded ($RDS_JSON missing)" >&2
-  echo "  run start_rds_stub.sh --real first, or copy the bundle into fixtures/go-connectors/$NAME/" >&2
+  echo "no warm cache for '$NAME' and no RDS endpoint recorded ($RDS_JSON missing)" >&2
+  echo "  run start_rds_stub.sh --real first, or run seed_cache.sh once when RDS is reachable" >&2
   exit 1
 fi
 

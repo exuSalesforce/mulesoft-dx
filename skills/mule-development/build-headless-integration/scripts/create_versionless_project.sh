@@ -88,10 +88,16 @@ jq '{ version: 1, connectors: [.picks[] | { name: .prefix }] }' "$SPEC_FILE" \
 # ManifestRdsExtensionModelSource has a warm cache on first project-open.
 # Cold-miss fetches still go through RDS — the plugin doesn't depend on this — but
 # pre-warming makes first open disk-speed and decouples render from RDS uptime.
+# When bundleSource IS the cache (the common case after fetch_bundle.sh hit RDS),
+# skip the copy — the artifacts are already in place.
 mkdir -p "$ACB_CACHE_DIR"
 while IFS=$'\t' read -r CONNECTOR_NAME BUNDLE_SOURCE; do
   [[ -z "$CONNECTOR_NAME" || -z "$BUNDLE_SOURCE" || ! -d "$BUNDLE_SOURCE" ]] && continue
   DEST="$ACB_CACHE_DIR/$CONNECTOR_NAME"
+  # Same-path check: bundleSource and DEST both point at the cache dir.
+  if [[ "$(cd "$BUNDLE_SOURCE" && pwd -P)" == "$(cd "$DEST" 2>/dev/null && pwd -P)" ]]; then
+    continue
+  fi
   mkdir -p "$DEST"
   for f in extension-model.json dsl.json extension.xsd; do
     if [[ -f "$BUNDLE_SOURCE/$f" ]]; then

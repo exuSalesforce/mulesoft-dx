@@ -8,7 +8,7 @@ This document inventories what the skill does today, what it produces, and what 
 
 Generate a versionless ([`.mule/project.json`](references/project-json-schema.md))-driven Mule integration project that:
 
-1. Picks Go connectors via [`fixtures/go-connectors/`](fixtures/go-connectors/) (or, soon, live from RDS).
+1. Picks Go connectors live from RDS — `GET /v1/connectors` for the catalog, `GET /v1/connectors/{name}/descriptor` for each pick. The skill ships no local connector bundles.
 2. Talks to RDS over plain HTTP for `test-connection` and connector metadata.
 3. Produces a project with the same shape as [`go-runtime/testdata/apps/salesforce-accounts-to-twilio`](file:///Users/tzeree/Salesforce/workspace/go-runtime/testdata/apps/salesforce-accounts-to-twilio).
 4. Renders the flow inline in Claude Desktop and lets the user click "Test Connection" inside ACB.
@@ -18,7 +18,7 @@ Generate a versionless ([`.mule/project.json`](references/project-json-schema.md
 ```
 Claude Desktop
     └── build-headless-integration skill
-          ├── bundle on disk (fixtures/go-connectors/<name>/)        ← connector metadata
+          ├── ~/AnypointCodeBuilder/.cache/go/<name>/                 ← warm cache (cache-first)
           │     extension-model.json + dsl.json + extension.xsd
           └── HTTP/JSON to RDS
                 ├── stub: helpers/rds_stub.mjs                        ← default backend
@@ -49,7 +49,8 @@ Reference contracts:
 - [`scripts/start_real_rds.sh`](scripts/start_real_rds.sh) — defers to [`go-runtime/start-rds.sh`](file:///Users/tzeree/Salesforce/workspace/go-runtime/start-rds.sh); preflight checks Docker + Go toolchain + data-weave sibling
 - [`scripts/stop_rds_stub.sh`](scripts/stop_rds_stub.sh) — clean SIGTERM; no-op on external/real backends
 - [`scripts/list_rds_connectors.sh`](scripts/list_rds_connectors.sh) — probe `GET /v1/connectors`; stub returns 404 (handled gracefully)
-- [`scripts/search_connectors.sh`](scripts/search_connectors.sh) — grep static catalog under `fixtures/go-connectors/`
+- [`scripts/search_connectors.sh`](scripts/search_connectors.sh) — query RDS `GET /v1/connectors`, filter by substring
+- [`scripts/seed_cache.sh`](scripts/seed_cache.sh) — one-shot pre-warm of `~/AnypointCodeBuilder/.cache/go/<name>/` from RDS so subsequent picks succeed offline
 - [`scripts/pick_connector.sh`](scripts/pick_connector.sh) — record bundle name + prefix + namespace + schemaLocation
 - [`scripts/describe_connector.sh`](scripts/describe_connector.sh) — generates rich digest + the build-mule-integration file family
 
@@ -73,12 +74,15 @@ Reference contracts:
 - [`references/flow-templates/`](references/flow-templates/) — concrete starting points: `scheduler.xml`, `http-listener.xml`, `connector-source.xml`, `multi-connector-http.xml`, `README.md` (token guide)
 - [`references/project-json-schema.md`](references/project-json-schema.md) — `.mule/project.json` shape + Java platform follow-up needed
 - [`references/rds-protocol.md`](references/rds-protocol.md) — RDS wire contract, mode selection, future endpoints
-- [`references/go-connector-catalog.md`](references/go-connector-catalog.md) — bundles shipped in `fixtures/go-connectors/` + which ones are loaded by real RDS
+- [`references/go-connector-catalog.md`](references/go-connector-catalog.md) — note: live catalog is now `bash scripts/list_rds_connectors.sh`; this doc is a static reference of what RDS typically ships
 
-### Bundles in fixtures
+### Connectors live on RDS (current `connector-service/config.yaml`)
 
-- `fixtures/go-connectors/salesforce/` — Salesforce 11.4.0, prefix `salesforce`, providers `basic` / `jwt` / `saml`
-- `fixtures/go-connectors/twilio/` — Twilio Connector 4.2.9, prefix `twilio`, single provider `account-sid-auth-token` (this one is the real-RDS demo target)
+- `salesforce` — prefix `salesforce`, providers `basic` / `jwt` / `saml`
+- `twilio` — prefix `twilio`, single provider `account-sid-auth-token`
+- `http` — prefix `http`
+
+The skill ships no local copies. `bash scripts/list_rds_connectors.sh` against a running RDS prints the live list.
 
 ### Verified end-to-end
 
@@ -98,9 +102,9 @@ Reference contracts:
 
 ### Skill / client side
 
-- **Live Exchange search** — `search_connectors.sh` only reads the static `fixtures/go-connectors/` catalog. To match the old skill's Exchange reach, fall back to Exchange REST or an RDS proxy when no local match. Lower priority — flagged as a future RDS endpoint (see below).
+- **Live Exchange search** — `search_connectors.sh` only sees what RDS has loaded. To match the old skill's Exchange reach (every Maven connector ever published), fall back to Exchange REST or an RDS proxy when no local match. Lower priority.
 
-- ~~**Bundles refresh**~~ — **DONE this iteration.** [`scripts/fetch_bundle.sh`](scripts/fetch_bundle.sh) prefers local `fixtures/go-connectors/<name>/`, falls back to `GET /v1/connectors/<name>/{extension-model,dsl}` from a running real RDS. [`pick_connector.sh`](scripts/pick_connector.sh) calls it transparently.
+- ~~**Bundles refresh**~~ — **DONE.** RDS owns the descriptors; [`scripts/fetch_bundle.sh`](scripts/fetch_bundle.sh) is cache-first then falls back to `GET /v1/connectors/<name>/descriptor`, write-through to `~/AnypointCodeBuilder/.cache/go/<name>/`. The skill no longer ships bundle copies.
 
 - **Trigger detection from connector sources** — Step 6 says "examine sources from the digest" but the agent has no helper. Could add a small `helpers/find_trigger_source.mjs` that takes a user phrase + a digest and returns matching source names ranked.
 
@@ -150,7 +154,8 @@ build-headless-integration/
 │   ├── list_rds_connectors.sh
 │   ├── search_connectors.sh
 │   ├── pick_connector.sh                       (resolves bundles via fetch_bundle.sh)
-│   ├── fetch_bundle.sh                         (local fixture → RDS fallback)
+│   ├── fetch_bundle.sh                         (cache → RDS /descriptor)
+│   ├── seed_cache.sh                           (one-shot pre-warm of ACB cache from RDS)
 │   ├── describe_connector.sh
 │   ├── commit_design_spec.sh
 │   ├── create_versionless_project.sh
@@ -160,9 +165,6 @@ build-headless-integration/
 │   ├── emit_metadata_files.mjs
 │   ├── rds_stub.mjs
 │   └── validate_flow.mjs
-├── fixtures/go-connectors/                     static catalog
-│   ├── salesforce/                             from mule-dx-mule-dev-plugin testdata
-│   └── twilio/                                 from go-runtime/connectors/twilio/testdata
 └── references/                                 docs the agent reads
     ├── reference-flow-pattern.md
     ├── project-json-schema.md
