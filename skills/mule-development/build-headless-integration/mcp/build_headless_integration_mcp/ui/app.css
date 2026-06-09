@@ -1,0 +1,425 @@
+/* Mule Flow Canvas — visual port of mule-dx-mule-dev-vscode/src/views/xml-editor/
+   app/readable-ui. Matches the live ACB canvas:
+     - rounded white cards w/ soft mule-blue shadow
+     - icon left, bold label + faint type/desc below
+     - flow wrapped in a container header card
+     - thin mule-blue connector edges
+   Layout: dagre top-to-bottom (NOT readable-ui's flexbox engine — porting that
+   plus its plus-rows / hover edges is out of scope for v1). */
+
+:root {
+  /* Pulled verbatim from CanvasThemeVariables.css so the v1 inline preview
+     reads as the same product as the vscode canvas. */
+  --canvas-background-color: #eef4ff;
+  --mule-flow-font-color: #014486;
+  --mule-flow-node-type-font-color: #014486;
+  --mule-readable-node-label-color: #6b7280;
+  --mule-readable-node-description-color: #1b1b1b;
+  --mule-node-background-color: #ffffff;
+  --mule-node-border-color: rgba(87, 163, 253, 0.35);
+  --mule-node-border-radius: 10px;
+  --mule-node-box-shadow-color: rgba(33, 45, 56, 0.11);
+  --mule-node-handler-color: #0176d3;
+  --mule-node-label-color: #01448b;
+  --mule-edge-color: #57a3fd;
+  --mule-edge-color-soft: rgba(87, 163, 253, 0.35);
+  --mule-node-selected-border-color: #0176d3;
+  --mule-node-hover-border-color: #57a3fd;
+  --mule-flow-list-title-color: #032d60;
+  --mule-flow-list-shadow: 0px 3px 4px rgba(1, 68, 134, 0.1);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--mule-flow-font-color);
+  background: var(--canvas-background-color);
+}
+
+/* Deliberate, generous default canvas height. The iframe's autoResize hook
+   reports document.body's rendered size to Claude Desktop, which expands
+   the iframe to match. With `height: 100vh` the body would just echo the
+   iframe's current (small) viewport and never grow — so we declare a real
+   min-height instead. Users who want the whole chat pane click the
+   "Fullscreen" button (requestDisplayMode). */
+body {
+  min-height: 640px;
+}
+
+#root {
+  /* Stretch to fill whatever Claude Desktop gives us, but never below the
+     min-height set above. */
+  min-height: 640px;
+  height: 100%;
+}
+
+.loading {
+  padding: 24px;
+  color: var(--mule-flow-font-color);
+  opacity: 0.6;
+  font-size: 14px;
+}
+
+.canvas-shell {
+  display: flex;
+  /* Match #root so React Flow's parent has a definite height for layout. */
+  height: 100%;
+  min-height: 640px;
+  width: 100%;
+}
+
+.canvas-pane {
+  flex: 1;
+  position: relative;
+  background: var(--canvas-background-color);
+}
+
+.flow-tabs {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: white;
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: var(--mule-node-border-radius);
+  box-shadow: var(--mule-flow-list-shadow);
+}
+
+.flow-tab {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mule-flow-font-color);
+  cursor: pointer;
+}
+
+.flow-tab.active {
+  background: rgba(87, 163, 253, 0.12);
+  border-color: var(--mule-node-border-color);
+}
+
+/* ------- Node card (matches readable-ui ReadableNode.tsx + ReadableUI.css) -- */
+
+.flow-node {
+  cursor: pointer;
+  border-radius: var(--mule-node-border-radius);
+  border: 1px solid var(--mule-node-border-color);
+  background: var(--mule-node-background-color);
+  box-shadow: 0px 3px 4px var(--mule-node-box-shadow-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 60px;
+  width: 240px;
+  padding: 10px 14px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.flow-node:hover {
+  border-color: var(--mule-node-hover-border-color);
+}
+
+.flow-node.selected {
+  border-color: var(--mule-node-selected-border-color);
+  box-shadow: 0 0 0 2px rgba(1, 118, 211, 0.14), 0px 3px 4px var(--mule-node-box-shadow-color);
+}
+
+.flow-node-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flow-node-icon svg {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.flow-node-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.flow-node-type {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--mule-readable-node-label-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-node-label {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--mule-readable-node-description-color);
+  word-break: break-word;
+}
+
+/* ------- Flow container header (wraps the chain visually) ----------------- */
+
+.flow-header-card {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  background: white;
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: 24px;
+  padding: 10px 18px;
+  box-shadow: var(--mule-flow-list-shadow);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 80%;
+}
+
+.flow-header-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mule-flow-list-title-color);
+  font-size: 18px;
+}
+
+.flow-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.flow-header-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mule-flow-list-title-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-header-meta {
+  font-size: 11px;
+  color: var(--mule-readable-node-label-color);
+}
+
+.flow-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-header-button {
+  background: white;
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--mule-flow-font-color);
+  padding: 4px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.flow-header-button:hover {
+  border-color: var(--mule-node-hover-border-color);
+  background: rgba(87, 163, 253, 0.06);
+}
+
+.flow-header-button.active {
+  background: rgba(1, 118, 211, 0.12);
+  border-color: var(--mule-node-selected-border-color);
+}
+
+/* ------- React Flow edge styling ------------------------------------------ */
+
+.react-flow__edge-path {
+  stroke: var(--mule-edge-color);
+  stroke-width: 1.5;
+}
+
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--mule-node-selected-border-color);
+  stroke-width: 2;
+}
+
+.react-flow__arrowhead path {
+  fill: var(--mule-edge-color);
+  stroke: var(--mule-edge-color);
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: var(--mule-node-handler-color);
+  border: 2px solid white;
+}
+
+/* ------- Side panel (click-to-inspect) ------------------------------------ */
+
+.side-panel {
+  width: 360px;
+  background: white;
+  border-left: 1px solid var(--mule-node-border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: -3px 0 4px rgba(1, 68, 134, 0.06);
+}
+
+.side-panel-header {
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--mule-node-border-color);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.side-panel-header-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.side-panel-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.side-panel-icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.side-panel-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.side-panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--mule-readable-node-description-color);
+  margin: 0;
+  word-break: break-word;
+}
+
+.side-panel-element {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mule-readable-node-label-color);
+  margin-top: 2px;
+}
+
+.side-panel-close {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--mule-readable-node-label-color);
+  padding: 0 4px;
+}
+
+.side-panel-close:hover {
+  color: var(--mule-flow-font-color);
+}
+
+.side-panel-body {
+  padding: 16px 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.side-panel-section + .side-panel-section {
+  margin-top: 20px;
+}
+
+.side-panel-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mule-readable-node-label-color);
+  margin: 0 0 8px;
+}
+
+.side-panel-doc {
+  font-size: 13px;
+  color: var(--mule-readable-node-description-color);
+  line-height: 1.5;
+}
+
+.attr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attr-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.attr-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mule-readable-node-label-color);
+}
+
+.attr-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mule-readable-node-description-color);
+  word-break: break-all;
+  background: rgba(87, 163, 253, 0.08);
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.side-panel-empty {
+  font-size: 13px;
+  color: var(--mule-readable-node-label-color);
+  padding: 20px;
+  text-align: center;
+}

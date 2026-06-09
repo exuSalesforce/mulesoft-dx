@@ -1,0 +1,35 @@
+[project]
+name = "build-headless-integration-mcp"
+version = "0.1.0"
+description = "MCP server that renders Mule flow XML as a React Flow canvas inline in Claude Desktop. Companion to the build-headless-integration skill."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "mule-dx-tooling" }]
+dependencies = [
+  "mcp[cli]>=1.10",
+  "lxml>=5.0",
+]
+
+[project.scripts]
+build-headless-integration-mcp = "build_headless_integration_mcp.server:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["build_headless_integration_mcp*"]
+
+[tool.setuptools.package-data]
+build_headless_integration_mcp = ["ui/*.html", "ui/*.css", "ui/*.js", "ui/icons/*.svg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

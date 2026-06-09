@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mule Flow Canvas</title>
+
+    <!-- React Flow's stylesheet must load before any nodes render. We use
+         reactflow@11 (the legacy package name) rather than @xyflow/react@12
+         because v11's UMD bundle only depends on React + ReactDOM globals,
+         while v12's UMD additionally requires `react/jsx-runtime` to be
+         available as a separate global — which React 18's UMD doesn't
+         expose. v11 is feature-equivalent for what we render. -->
+    <link rel="stylesheet" href="https://unpkg.com/reactflow@11/dist/style.css" />
+
+    <style>
+      /*__APP_CSS__*/
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="loading">Waiting for flow data…</div>
+    </div>
+
+    <!-- React + ReactFlow + dagre via UMD bundles. The CSP whitelist for
+         this iframe (set on the resource's _meta.ui.csp.resourceDomains) is
+         what permits these external script loads. -->
+    <script
+      crossorigin
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/reactflow@11/dist/umd/index.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/@dagrejs/dagre@1/dist/dagre.min.js"
+    ></script>
+
+    <script>
+      /*__APP_JS__*/
+    </script>
+  </body>
+</html>

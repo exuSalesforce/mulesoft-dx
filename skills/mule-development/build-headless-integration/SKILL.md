@@ -301,11 +301,23 @@ Catches the failure modes the old `validate_before_build.sh` used to catch at `m
 
 If validation fails, fix the XML and re-run before Step 10. The generator runs offline so this is the catch-net for typos and digest drift.
 
-## Step 10: Render the flow (MCP tool — pending)
+## Step 10: Render the flow inline
 
-A dedicated MCP tool will render the canvas inline in Claude Desktop using the same renderer ACB ships, so the agent doesn't reimplement layout/iconography. Until that tool lands, Step 10 is a no-op — the agent surfaces the project path and tells the user to open it in ACB to see the canvas.
+The skill ships a companion MCP server at [`mcp/`](mcp/README.md) that renders the generated flow as an interactive React Flow canvas in the Claude Desktop chat. After the project exists on disk and validation passes, call:
 
-When the MCP tool ships, this step becomes a single tool call against the just-written `src/main/mule/<projectName>.xml`.
+```
+render_mule_flow(project_dir="$WS_DIR/<projectName>")
+```
+
+The tool reads `<project_dir>/src/main/mule/<name>.xml`, parses it into a `{nodes, edges}` graph (one node per top-level processor; containers like `<choice>`/`<try>` collapse to one summary node), and returns a UI resource Claude Desktop iframes inline. Click any node in the canvas to see its XML attributes in a side panel. The canvas is read-only — flow edits go through the chat (the agent regenerates the project).
+
+If `render_mule_flow` is not available as an MCP tool:
+
+1. Surface that to the user — the MCP server isn't installed or registered with Claude Desktop.
+2. Point them at [`mcp/README.md`](mcp/README.md) for the one-time install + `claude_desktop_config.json` snippet.
+3. As a fallback, tell them they can open the project in ACB to see the canvas — same data, different surface.
+
+Do not silently skip Step 10. Either render or surface why we couldn't.
 
 After Step 10:
 

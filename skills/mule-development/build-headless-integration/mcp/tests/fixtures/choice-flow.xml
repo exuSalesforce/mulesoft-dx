@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <http:listener-config name="listenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8081"/>
+    </http:listener-config>
+
+    <flow name="branching-flow" doc:name="Branching Flow">
+        <http:listener config-ref="listenerConfig" path="/route" doc:name="HTTP /route"/>
+        <choice doc:name="Route by status">
+            <when expression="#[payload.status == 'a']">
+                <logger level="INFO" message="A" doc:name="Log A"/>
+            </when>
+            <when expression="#[payload.status == 'b']">
+                <logger level="INFO" message="B" doc:name="Log B"/>
+            </when>
+            <otherwise>
+                <logger level="WARN" message="other" doc:name="Log Other"/>
+            </otherwise>
+        </choice>
+        <logger level="INFO" message="done" doc:name="Log Done"/>
+    </flow>
+</mule>

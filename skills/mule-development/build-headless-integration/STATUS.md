@@ -109,7 +109,7 @@ A `salesforce-accounts-to-twilio-headless/` project under `$WS_DIR` produced fro
 
 - **Validator: per-element attribute coverage** — `validate_generated_flow_xml.sh` checks element names, error types, config-refs, and `${...}` placeholders, but **not whether each `<prefix:element attrX=...>` uses an attribute name the descriptor's dsl.json declares for that element**. Real bug this missed (2026-06-05): the agent wrote `<salesforce:query salesforceQuery="...">` (Java-connector attribute name) when the Go connector's descriptor declared `soql`. ACB rendered it as an invalid attribute warning. Fix: add a 6th check that for every `<prefix:elementName>` in the flow XML, every attribute except `doc:*` / `xmlns:*` / `xsi:*` must appear in `dsl.json:operations[<name>].attributes` (or `connectionProviders[*]` / `configurations[*]`). Same lookup the canvas does on render.
 
-- **MCP flow renderer** — Step 10 in [`SKILL.md`](SKILL.md) is a no-op placeholder. A separate MCP tool will render the canvas inline in Claude Desktop using the same renderer ACB ships (see `mule-dx-mule-dev-vscode/src/views/xml-editor/` in the sibling component checkout). Removed the previous SVG/PNG rasterizer (`scripts/visualize_flow.sh` + `helpers/visualize.mjs` + `@resvg/resvg-js`) — it produced thumbnail-quality boxes that the real MCP renderer will obsolete on day one. When the MCP tool ships, Step 10 becomes a single tool call against the just-written `src/main/mule/<projectName>.xml`.
+- ~~**MCP flow renderer**~~ — **DONE (v1).** [`mcp/`](mcp/README.md) ships a standalone FastMCP server that exposes `render_mule_flow(project_dir)`. It parses the flow XML into a flat `{nodes, edges}` graph and returns a UI resource Claude Desktop iframes inline (React Flow + dagre, top-to-bottom layout, in-iframe side panel for node attributes). Step 10 in [`SKILL.md`](SKILL.md) now calls this tool. **v1 limitations** (deliberate): containers like `<choice>` / `<try>` / `<scatter-gather>` collapse to a single summary node — a real nested visualisation requires porting the layout engine from `mule-dx-mule-dev-vscode/src/views/xml-editor/` and is a v2 task. Read-only; no edit-from-canvas; no per-connector icons (generic kind badges).
 
 ### Java platform
 
@@ -162,9 +162,22 @@ build-headless-integration/
 │   ├── digest_extension_model.mjs
 │   ├── emit_metadata_files.mjs
 │   └── validate_flow.mjs
-└── references/                                 docs the agent reads
-    ├── reference-flow-pattern.md               flow skeleton + trigger variants + rules
-    └── rds-protocol.md                         RDS wire contract (operator-facing)
+├── references/                                 docs the agent reads
+│   ├── reference-flow-pattern.md               flow skeleton + trigger variants + rules
+│   └── rds-protocol.md                         RDS wire contract (operator-facing)
+└── mcp/                                        Step 10 flow-render MCP server (FastMCP + React Flow)
+    ├── README.md                               install + claude_desktop_config.json snippet
+    ├── pyproject.toml                          Python 3.11+, mcp[cli], lxml; console_script entry
+    ├── build_headless_integration_mcp/
+    │   ├── server.py                           FastMCP entry; render_mule_flow tool + UI resource
+    │   ├── parse.py                            Mule XML → {nodes, edges} (flat tree)
+    │   └── ui/                                 bundled iframe HTML (React + ReactFlow + dagre)
+    │       ├── app.html
+    │       ├── app.css
+    │       └── app.js
+    └── tests/
+        ├── test_parse.py                       8 behavioural tests against real fixtures
+        └── fixtures/                           sf-to-twilio.xml, scheduler-flow.xml, choice-flow.xml
 ```
 
 ## Running the real RDS stack (full bring-up)

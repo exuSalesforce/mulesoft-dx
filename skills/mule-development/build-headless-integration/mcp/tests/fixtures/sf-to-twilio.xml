@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+      xmlns:twilio="http://www.mulesoft.org/schema/mule/twilio"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+        http://www.mulesoft.org/schema/mule/twilio http://www.mulesoft.org/schema/mule/twilio/current/mule-twilio.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <configuration-properties file="config.yaml"
+        doc:name="Configuration Properties"
+        doc:description="Loads externalized configuration from config.yaml" />
+
+    <http:listener-config name="httpListenerConfig"
+        doc:name="HTTP Listener Config"
+        doc:description="Listens for inbound HTTP requests on the configured host and port">
+        <http:listener-connection host="${http.host}" port="${http.port}" />
+    </http:listener-config>
+
+    <salesforce:sfdc-config name="Salesforce_Config"
+        doc:name="Salesforce Config"
+        doc:description="Salesforce connection (basic auth)">
+        <salesforce:basic
+            username="${salesforce.basic.username}"
+            password="${salesforce.basic.password}" />
+    </salesforce:sfdc-config>
+
+    <twilio:config name="Twilio_Config"
+        doc:name="Twilio Config"
+        doc:description="Twilio connection (Account SID + Auth Token)">
+        <twilio:account-sid-auth-token
+            username="${twilio.account-sid-auth-token.username}"
+            password="${twilio.account-sid-auth-token.password}" />
+    </twilio:config>
+
+    <flow name="sf-accounts-to-twilio-flow"
+        doc:name="Salesforce Top 5 Accounts To Twilio SMS"
+        doc:description="On HTTP POST /notify, queries the 5 most recent Salesforce accounts and sends a Twilio SMS notification listing them">
+
+        <http:listener config-ref="httpListenerConfig" path="/notify" allowedMethods="POST"
+            doc:name="HTTP POST /notify"
+            doc:description="Receives the trigger request; optional JSON body { phoneFrom, phoneTo }" />
+
+        <set-variable variableName="phoneFrom"
+            value="#[payload.phoneFrom default p('twilio.sms.from')]"
+            doc:name="Set phoneFrom"
+            doc:description="Sender phone number (E.164) from request body or config fallback" />
+
+        <set-variable variableName="phoneTo"
+            value="#[payload.phoneTo default p('twilio.sms.to')]"
+            doc:name="Set phoneTo"
+            doc:description="Recipient phone number (E.164) from request body or config fallback" />
+
+        <salesforce:query config-ref="Salesforce_Config"
+            soql="SELECT Id, Name FROM Account ORDER BY CreatedDate DESC LIMIT 5"
+            target="accounts"
+            doc:name="Query Top 5 Accounts"
+            doc:description="Fetches the 5 most recently created Salesforce accounts" />
+
+        <ee:transform doc:name="Build SMS Message Text"
+            doc:description="Composes the SMS body from the queried account names">
+            <ee:variables>
+                <ee:set-variable variableName="messageText"><![CDATA[%dw 2.0
+output text/plain
+---
+"Top 5 Salesforce accounts:\n" ++
+    (vars.accounts default [] map ((account, idx) ->
+        (idx + 1) ++ ". " ++ (account.Name default "(unnamed)")
+    ) joinBy "\n")]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <logger level="INFO"
+            message="#[output text/plain --- 'Sending SMS to ' ++ vars.phoneTo ++ ': ' ++ vars.messageText]"
+            doc:name="Log SMS Payload"
+            doc:description="Logs the recipient and the message body about to be sent" />
+
+        <twilio:sendMessage config-ref="Twilio_Config"
+            from="#[vars.phoneFrom]"
+            to="#[vars.phoneTo]"
+            messageText="#[vars.messageText]"
+            target="smsResult"
+            doc:name="Send Twilio SMS"
+            doc:description="Sends the composed message via Twilio" />
+
+        <ee:transform doc:name="Build HTTP Response"
+            doc:description="Returns a JSON summary of the notification">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "ok",
+    accountsSent: sizeOf(vars.accounts default []),
+    smsTo: vars.phoneTo,
+    messageSid: (vars.smsResult.sid default null)
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler>
+            <on-error-propagate type="ANY"
+                doc:name="On Error"
+                doc:description="Logs the failure and returns a structured error response">
+                <logger level="ERROR"
+                    message="#[output text/plain --- 'Flow error: ' ++ (error.description default 'no description')]"
+                    doc:name="Log Error Detail"
+                    doc:description="Records the propagated error for diagnostics" />
+                <ee:transform doc:name="Error Response"
+                    doc:description="Returns a JSON error payload">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    error: true,
+    errorType: error.errorType,
+    description: error.description
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </on-error-propagate>
+        </error-handler>
+
+    </flow>
+</mule>
