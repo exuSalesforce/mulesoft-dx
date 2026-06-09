@@ -21,6 +21,7 @@ servers:
     region:
       default: ca1
       description: Region identifier for the service endpoint.
+      enum: [ca1, jp1]
 tags:
 - name: Access Management
   description: APIs for managing access control, identity, and authorization within

@@ -3729,6 +3729,7 @@ function onServerChange() {
     var regionRow = document.getElementById('serverRegionRow');
     var preset = document.getElementById('regionPreset');
     var defaultOpt = document.getElementById('regionDefaultOption');
+    var jp1Opt = document.getElementById('regionJp1Option');
     var customInput = document.getElementById('regionCustomInput');
     if (sel && regionRow) {
         var showRegion = sel.value === 'eu' || sel.value === 'platform';
@@ -3737,6 +3738,7 @@ function onServerChange() {
             var isEu = sel.value === 'eu';
             defaultOpt.value = isEu ? 'eu1' : 'ca1';
             defaultOpt.textContent = isEu ? 'Europe (eu1)' : 'Canada (ca1)';
+            if (jp1Opt) jp1Opt.hidden = isEu;
             preset.value = defaultOpt.value;
             if (customInput) customInput.style.display = 'none';
         }
@@ -6802,6 +6804,42 @@ function canProceedToNextStep(skillSlug, currentStepIndex) {
 // Initialize server selector
 // ============================================================================
 
+function restoreServerSelectionFromSessionStorage() {
+    var customInput = document.getElementById('regionCustomInput');
+    var storedServerType = sessionStorage.getItem('anypoint_server_type');
+    if (!storedServerType) return;
+    var serverSelect = document.getElementById('serverSelect');
+    if (!serverSelect || serverSelect.value === storedServerType) return;
+    serverSelect.value = storedServerType;
+    var regionRow = document.getElementById('serverRegionRow');
+    var showRegion = storedServerType === 'eu' || storedServerType === 'platform';
+    if (regionRow) regionRow.style.display = showRegion ? 'flex' : 'none';
+    if (!showRegion) return;
+    var defaultOpt = document.getElementById('regionDefaultOption');
+    var jp1Opt = document.getElementById('regionJp1Option');
+    var preset = document.getElementById('regionPreset');
+    var isEu = storedServerType === 'eu';
+    if (defaultOpt && preset) {
+        defaultOpt.value = isEu ? 'eu1' : 'ca1';
+        defaultOpt.textContent = isEu ? 'Europe (eu1)' : 'Canada (ca1)';
+        if (jp1Opt) jp1Opt.hidden = isEu;
+    }
+    var storedRegion = sessionStorage.getItem('anypoint_region');
+    if (storedRegion && preset && defaultOpt) {
+        if (storedRegion === defaultOpt.value) {
+            preset.value = storedRegion;
+        } else if (storedRegion === 'jp1' && !isEu) {
+            preset.value = 'jp1';
+        } else {
+            preset.value = 'custom';
+            if (customInput) {
+                customInput.style.display = 'block';
+                customInput.value = storedRegion;
+            }
+        }
+    }
+}
+
 (function initServerSelect() {
     document.addEventListener('DOMContentLoaded', function() {
         // Add listener for custom region input
@@ -6814,38 +6852,7 @@ function canProceedToNextStep(skillSlug, currentStepIndex) {
             });
         }
 
-        // Restore server/region selection from sessionStorage
-        var storedServerType = sessionStorage.getItem('anypoint_server_type');
-        if (storedServerType) {
-            var serverSelect = document.getElementById('serverSelect');
-            if (serverSelect && serverSelect.value !== storedServerType) {
-                serverSelect.value = storedServerType;
-                var regionRow = document.getElementById('serverRegionRow');
-                var showRegion = storedServerType === 'eu' || storedServerType === 'platform';
-                if (regionRow) regionRow.style.display = showRegion ? 'flex' : 'none';
-                if (showRegion) {
-                    var defaultOpt = document.getElementById('regionDefaultOption');
-                    var preset = document.getElementById('regionPreset');
-                    if (defaultOpt && preset) {
-                        var isEu = storedServerType === 'eu';
-                        defaultOpt.value = isEu ? 'eu1' : 'ca1';
-                        defaultOpt.textContent = isEu ? 'Europe (eu1)' : 'Canada (ca1)';
-                    }
-                    var storedRegion = sessionStorage.getItem('anypoint_region');
-                    if (storedRegion && preset && defaultOpt) {
-                        if (storedRegion === defaultOpt.value) {
-                            preset.value = storedRegion;
-                        } else {
-                            preset.value = 'custom';
-                            if (customInput) {
-                                customInput.style.display = 'block';
-                                customInput.value = storedRegion;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        restoreServerSelectionFromSessionStorage();
 
         // Check for existing token
         var token = sessionStorage.getItem('anypoint_token');

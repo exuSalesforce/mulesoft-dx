@@ -22,6 +22,7 @@ servers:
     region:
       default: ca1
       description: Region identifier for the service endpoint.
+      enum: [ca1, jp1]
     version:
       default: unknown
       description: API version identifier.

@@ -2179,4 +2179,96 @@ describe('executeXOriginSource — button reset and auth errors', () => {
     });
 });
 
+// ===========================================================================
+// jp1 region support (W-22861359)
+// ===========================================================================
+describe('jp1 region support', () => {
+    function setUpAuthPanel() {
+        document.body.innerHTML = `
+            <select id="serverSelect">
+                <option value="us">US</option>
+                <option value="eu">EU</option>
+                <option value="platform">Platform</option>
+            </select>
+            <div id="serverRegionRow" style="display:none">
+                <select id="regionPreset">
+                    <option id="regionDefaultOption" value="eu1">Europe (eu1)</option>
+                    <option id="regionJp1Option" value="jp1">Japan (jp1)</option>
+                    <option value="custom">Custom</option>
+                </select>
+                <input type="text" id="regionCustomInput" style="display:none">
+            </div>
+        `;
+    }
+
+    afterEach(() => {
+        document.body.innerHTML = '';
+        sessionStorage.clear();
+    });
+
+    test('jp1 option is hidden when serverType is eu', () => {
+        setUpAuthPanel();
+        const serverSelect = document.getElementById('serverSelect');
+        serverSelect.value = 'eu';
+        onServerChange();
+        const jp1Opt = document.getElementById('regionJp1Option');
+        expect(jp1Opt.hidden).toBe(true);
+    });
+
+    test('jp1 option is visible when serverType is platform', () => {
+        setUpAuthPanel();
+        const serverSelect = document.getElementById('serverSelect');
+        serverSelect.value = 'platform';
+        onServerChange();
+        const jp1Opt = document.getElementById('regionJp1Option');
+        expect(jp1Opt.hidden).toBe(false);
+    });
+
+    test('getSelectedBaseUrl returns jp1.platform.mulesoft.com for platform+jp1', () => {
+        setUpAuthPanel();
+        const serverSelect = document.getElementById('serverSelect');
+        const regionPreset = document.getElementById('regionPreset');
+        serverSelect.value = 'platform';
+        regionPreset.value = 'jp1';
+        expect(getSelectedBaseUrl()).toBe('https://jp1.platform.mulesoft.com');
+    });
+
+    test('sessionStorage round-trip: jp1 selection persists after restore', () => {
+        setUpAuthPanel();
+        const serverSelect = document.getElementById('serverSelect');
+        const regionPreset = document.getElementById('regionPreset');
+
+        // Set platform first to show region row
+        serverSelect.value = 'platform';
+        onServerChange();
+
+        // Now select jp1
+        regionPreset.value = 'jp1';
+        onRegionPresetChange();
+
+        // Verify stored values
+        expect(sessionStorage.getItem('anypoint_server_type')).toBe('platform');
+        expect(sessionStorage.getItem('anypoint_region')).toBe('jp1');
+
+        // Simulate page reload: reset DOM with serverSelect at default 'us'
+        // so restoreServerSelectionFromSessionStorage() actually fires
+        // (the production guard short-circuits when current value already matches stored).
+        document.body.innerHTML = '';
+        setUpAuthPanel();
+        const serverSelectAfter = document.getElementById('serverSelect');
+        serverSelectAfter.value = 'us';
+
+        // Invoke the production restore function directly.
+        restoreServerSelectionFromSessionStorage();
+
+        const regionPresetAfter = document.getElementById('regionPreset');
+        const jp1Opt = document.getElementById('regionJp1Option');
+
+        // Verify jp1 is restored
+        expect(serverSelectAfter.value).toBe('platform');
+        expect(regionPresetAfter.value).toBe('jp1');
+        expect(jp1Opt.hidden).toBe(false);
+    });
+});
+
 
