@@ -10,3 +10,9 @@ node_modules/
 
 .idea
 .idea/**
+
+# Python build artifacts (build-headless-integration/mcp/)
+.venv/
+*.egg-info/
+.pytest_cache/
+*.pyc
