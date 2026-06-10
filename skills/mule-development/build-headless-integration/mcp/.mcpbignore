@@ -1,0 +1,21 @@
+# Dev-only artifacts — must not ship inside the .mcpb bundle. The .venv is
+# host-specific (absolute paths in shebangs, prebuilt wheels for the build
+# host's CPU/OS) and would balloon the artifact by tens of MB. uv recreates
+# its own venv at install time on the user's machine.
+.venv/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+
+# Tests + fixtures live in the repo for development; the runtime server
+# doesn't need them.
+tests/
+
+# Build outputs (this script writes here).
+build/
+dist/
+
+# Editor / OS noise.
+.idea/
+.vscode/
+*.pyc

@@ -16,3 +16,8 @@ node_modules/
 *.egg-info/
 .pytest_cache/
 *.pyc
+
+# .mcpb bundles (build outputs from scripts/build_mcpb.sh — the bundle itself
+# is platform-specific noise; the manifest + sources are tracked).
+skills/mule-development/build-headless-integration/mcp/build/
+*.mcpb

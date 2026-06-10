@@ -128,7 +128,8 @@ Invoke each script with the `Bash` tool. State persists under `$WS_DIR/tmp/` so 
 | `scripts/commit_design_spec.sh` | Step 6 — read agent-supplied design spec on stdin; merge picks into `tmp/design-spec.json` | `tmp/design-spec.json` |
 | `scripts/create_versionless_project.sh <projectDir>` | Step 6 — write `.mule/project.json`, `project-manifest.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml`. No bundles inside the project — they live in the warm cache (`$ACB_HOME/.cache/go/<name>/`), pre-warmed during this step. | project on disk + cache pre-warmed |
 | `scripts/validate_generated_flow_xml.sh <projectDir>` | Step 6.5 — validate the generated flow XML against the connector digests: schemaLocation pairs, known DSL element names, error types in `<on-error-propagate>`, `config-ref` resolution, `${...}` placeholders matching `config.yaml` keys. Cheap analogue of `validate_before_build.sh` from the build-mule-integration skill. | exit 0 on success; non-zero with stderr report on failure |
-| `scripts/install_mcp_server.sh [--uninstall]` | One-time setup for Step 7 — venv + pip install + `claude_desktop_config.json` entry for the flow-canvas MCP server. Idempotent. | venv at `mcp/.venv/`, edited Claude Desktop config |
+| `scripts/build_mcpb.sh` | Step 7 (recommended install path) — package `mcp/` into a single-click `.mcpb` bundle the user installs by double-clicking it in Claude Desktop. Wraps `mcpb pack`; requires `npm i -g @anthropic-ai/mcpb` once on the build host. | `mcp/build/mule-flow-canvas-<version>.mcpb` |
+| `scripts/install_mcp_server.sh [--uninstall]` | Step 7 (dev-loop fallback) — venv + `pip install -e` + `claude_desktop_config.json` entry for the flow-canvas MCP server. Use when `.mcpb` isn't available or you want a live-edit dev install. Idempotent. | venv at `mcp/.venv/`, edited Claude Desktop config |
 
 The agent generates the flow XML inline at Step 6 — bash does not call an LLM. The connector digest in `tmp/connector-metadata/<nick>.json` is the input.
 
@@ -395,7 +396,32 @@ If the user needs to see the full nested structure (the children inside `<choice
 
 ### When `render_mule_flow` is NOT available as an MCP tool
 
-This means Claude Desktop hasn't been told about the server yet (the skill folder by itself doesn't auto-register the MCP server with Claude Desktop). Run the bundled installer once:
+Claude Desktop hasn't been told about the server yet — the skill folder by itself doesn't auto-register the MCP server. Two install paths, in preference order:
+
+#### Option 1 — Install the `.mcpb` bundle (recommended)
+
+The skill ships an Anthropic-standard MCP Bundle (`.mcpb`) the user installs by double-clicking. It registers the server in Claude Desktop's UI with a proper Settings → Extensions entry — and `uv` (bundled with Claude Desktop on macOS / Windows) resolves the Python deps on first launch, no host-side Python or pip required.
+
+Build the bundle once from a checkout (one-time prereq: `npm i -g @anthropic-ai/mcpb`):
+
+```bash
+bash "$SKILL/scripts/build_mcpb.sh"
+# → writes <skill>/mcp/build/mule-flow-canvas-<version>.mcpb
+```
+
+Then install it:
+
+```bash
+open "<skill>/mcp/build/mule-flow-canvas-<version>.mcpb"
+```
+
+Claude Desktop opens an install dialog. Approve, **quit + relaunch Claude Desktop** (⌘Q → reopen — MCP servers spawn at app start), and `render_mule_flow` becomes available.
+
+To uninstall: Claude Desktop → Settings → Extensions → "Mule Flow Canvas" → Uninstall.
+
+#### Option 2 — `claude_desktop_config.json` install (dev-loop fallback)
+
+Use this when the user can't install the `.mcpb` (no `mcpb` CLI on the build host, no `uv` available, or they want a live-edit dev-mode install via `pip install -e`):
 
 ```bash
 bash "$SKILL/scripts/install_mcp_server.sh"
@@ -406,7 +432,7 @@ The installer (idempotent, safe to re-run):
 2. Runs `pip install -e mcp/` so the `build-headless-integration-mcp` console script lands on the venv's PATH.
 3. Adds an `mcpServers.mule-flow-canvas` entry to `~/Library/Application Support/Claude/claude_desktop_config.json` (existing entries preserved; existing config backed up to `claude_desktop_config.json.bak.<timestamp>`).
 
-After the installer prints "Installed", **the user must quit and relaunch Claude Desktop** (⌘Q → reopen). MCP servers spawn at app start; a hot config reload registers the server but the iframe pipeline only initialises once per app lifetime.
+After the installer prints "Installed", quit + relaunch Claude Desktop.
 
 To uninstall: `bash "$SKILL/scripts/install_mcp_server.sh" --uninstall`.
 
@@ -483,7 +509,7 @@ For all four patterns, the canvas labels rendered in ACB and in the MCP renderer
 
 **Port 8090 occupied.** Override with `MULE_DX_RDS_URL=http://localhost:<other>:` and rerun.
 
-**MCP `render_mule_flow` tool not available.** Claude Desktop hasn't been told about the server yet. Run `bash "$SKILL/scripts/install_mcp_server.sh"` once and then quit + relaunch Claude Desktop.
+**MCP `render_mule_flow` tool not available.** Claude Desktop hasn't been told about the server yet. Two install paths — the `.mcpb` bundle (recommended; `bash "$SKILL/scripts/build_mcpb.sh"` then `open` the artifact) or the dev-loop installer (`bash "$SKILL/scripts/install_mcp_server.sh"`). Either way, quit + relaunch Claude Desktop after install.
 
 **Validator Check 6 false-positive.** If the validator reports an attribute isn't in the digest but the digest is current, it's likely a digest-shape bug. Re-run `phase1.sh` to refresh `tmp/connector-metadata/<nick>-digest.json`. The check defers (passes) when the digest declared zero attributes for an element, so config-level elements with `parameterModels: null` don't false-flag.
 
@@ -512,7 +538,11 @@ bash "$SKILL/scripts/validate_generated_flow_xml.sh" "$WS_DIR/<projectName>"
 
 # Step 7 — render the canvas inline (Claude Desktop chat tab only)
 # In the chat: render_mule_flow(project_dir="$WS_DIR/<projectName>")
-# First-time install (idempotent):
+# First-time install — preferred: build a .mcpb bundle and double-click it
+# (one-time prereq: `npm i -g @anthropic-ai/mcpb`):
+bash "$SKILL/scripts/build_mcpb.sh"          # → mcp/build/mule-flow-canvas-<v>.mcpb
+open "$SKILL/mcp/build/mule-flow-canvas-"*.mcpb  # launches Claude Desktop install dialog
+# Dev-loop fallback (live-edit via pip install -e, no .mcpb tooling needed):
 bash "$SKILL/scripts/install_mcp_server.sh"
 
 # RDS lifecycle
