@@ -1,11 +1,12 @@
 /* Mule Flow Canvas — visual port of mule-dx-mule-dev-vscode/src/views/xml-editor/
    app/readable-ui. Matches the live ACB canvas:
      - rounded white cards w/ soft mule-blue shadow
-     - icon left, bold label + faint type/desc below
-     - flow wrapped in a container header card
-     - thin mule-blue connector edges
-   Layout: dagre top-to-bottom (NOT readable-ui's flexbox engine — porting that
-   plus its plus-rows / hover edges is out of scope for v1). */
+     - icon left, faint type label, bold description below
+     - the whole flow wrapped in a single container card
+     - error handler in its own red-tinted container below
+   Layout: native CSS column inside a flex container — no graph engine.
+   Pure linear chains only (containers like <choice>/<try> render as a
+   single collapsed node; expanding them is a v2 task). */
 
 :root {
   /* Pulled verbatim from CanvasThemeVariables.css so the v1 inline preview
@@ -42,7 +43,11 @@ body,
   margin: 0;
   font-family: var(--font-sans);
   color: var(--mule-flow-font-color);
-  background: var(--canvas-background-color);
+  /* White, not the canvas blue: any vertical space the iframe gives us
+     beyond the canvas-shell (e.g. when the host renders the iframe taller
+     than our min-height of 640px) must NOT visually blend with the canvas
+     itself. Only `.canvas-pane` paints with the canvas blue. */
+  background: white;
 }
 
 /* Deliberate, generous default canvas height. The iframe's autoResize hook
@@ -75,19 +80,102 @@ body {
   height: 100%;
   min-height: 640px;
   width: 100%;
+  /* A distinct mule-blue bottom border so the canvas reads as a bounded
+     surface in BOTH inline and fullscreen modes. Without it the canvas
+     blue background blends into whatever the host renders below — chat
+     composer in fullscreen, message column in inline. */
+  border-bottom: 3px solid var(--mule-node-selected-border-color);
+  box-shadow: 0 4px 12px rgba(1, 68, 134, 0.18);
+}
+
+/* In fullscreen the canvas should fill all available height; the bottom
+   border + shadow remain the same so the bounding visual is consistent. */
+.canvas-shell.is-fullscreen {
+  /* placeholder for any fullscreen-only tweaks; styling now matches inline */
 }
 
 .canvas-pane {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* `position: relative` is the anchor for the absolute-positioned
+     ZoomControls cluster (bottom-left of the canvas). */
   position: relative;
   background: var(--canvas-background-color);
 }
 
-.flow-tabs {
+/* The zoom wrapper applies CSS transform: scale() over the chain. The
+   transform-origin sits at top-centre so the chain stays anchored where
+   it is instead of drifting toward the corner as it shrinks. The wrapper
+   itself stretches the full scroll-surface width so the column inside can
+   centre itself naturally. */
+.readable-flow-zoom {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  transform-origin: top center;
+  transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Zoom controls — bottom-left of the canvas pane (above the canvas blue,
+   below scrolling content). Mirrors the ACB canvas's zoom cluster + most
+   diagram tools. */
+.canvas-zoom-controls {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 6;
+  left: 16px;
+  bottom: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: stretch;
+  background: white;
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: 8px;
+  box-shadow: var(--mule-flow-list-shadow);
+  overflow: hidden;
+}
+
+.canvas-zoom-button {
+  background: white;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--mule-flow-font-color);
+  padding: 0 12px;
+  height: 32px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  transition: background 120ms ease;
+}
+
+.canvas-zoom-button + .canvas-zoom-button {
+  border-left: 1px solid var(--mule-node-border-color);
+}
+
+.canvas-zoom-button:hover:not(:disabled) {
+  background: rgba(87, 163, 253, 0.08);
+}
+
+.canvas-zoom-button:disabled {
+  color: var(--mule-readable-node-label-color);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.canvas-zoom-button.canvas-zoom-reset {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+}
+
+.flow-tabs {
+  margin: 12px 24px 0;
   display: flex;
   gap: 6px;
   padding: 6px;
@@ -95,6 +183,7 @@ body {
   border: 1px solid var(--mule-node-border-color);
   border-radius: var(--mule-node-border-radius);
   box-shadow: var(--mule-flow-list-shadow);
+  width: fit-content;
 }
 
 .flow-tab {
@@ -113,132 +202,31 @@ body {
   border-color: var(--mule-node-border-color);
 }
 
-/* ------- Node card (matches readable-ui ReadableNode.tsx + ReadableUI.css) -- */
+/* ------- Readable-UI port (chain inside a container card) ------------------
+ *
+ * Visual port of mule-dx-mule-dev-vscode/src/views/xml-editor/app/readable-ui/.
+ * v1 scope: linear chain only — no branches, no plus-row interaction (the
+ * plus glyphs are decorative), no kebab menu, no breakpoints. The chain
+ * sits inside a rounded container that matches the visual the ACB canvas
+ * produces for a single flow.
+ */
 
-.flow-node {
-  cursor: pointer;
-  border-radius: var(--mule-node-border-radius);
-  border: 1px solid var(--mule-node-border-color);
-  background: var(--mule-node-background-color);
-  box-shadow: 0px 3px 4px var(--mule-node-box-shadow-color);
+/* The toolbar sits above the chain — meta info on the left, fullscreen
+   toggle on the right. Stays compact so it doesn't compete with the flow. */
+.canvas-pane-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 60px;
-  width: 240px;
-  padding: 10px 14px;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-
-.flow-node:hover {
-  border-color: var(--mule-node-hover-border-color);
-}
-
-.flow-node.selected {
-  border-color: var(--mule-node-selected-border-color);
-  box-shadow: 0 0 0 2px rgba(1, 118, 211, 0.14), 0px 3px 4px var(--mule-node-box-shadow-color);
-}
-
-.flow-node-icon {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.flow-node-icon svg {
-  width: 32px;
-  height: 32px;
-  display: block;
-}
-
-.flow-node-body {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.flow-node-type {
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 400;
-  color: var(--mule-readable-node-label-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.flow-node-label {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
-  color: var(--mule-readable-node-description-color);
-  word-break: break-word;
-}
-
-/* ------- Flow container header (wraps the chain visually) ----------------- */
-
-.flow-header-card {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 5;
-  background: white;
-  border: 1px solid var(--mule-node-border-color);
-  border-radius: 24px;
-  padding: 10px 18px;
-  box-shadow: var(--mule-flow-list-shadow);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: 80%;
-}
-
-.flow-header-icon {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--mule-flow-list-title-color);
-  font-size: 18px;
-}
-
-.flow-header-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.flow-header-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--mule-flow-list-title-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.flow-header-meta {
+  justify-content: space-between;
+  padding: 12px 24px 0;
   font-size: 11px;
   color: var(--mule-readable-node-label-color);
 }
 
-.flow-header-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.canvas-pane-meta {
+  font-weight: 500;
 }
 
-.flow-header-button {
+.canvas-pane-button {
   background: white;
   border: 1px solid var(--mule-node-border-color);
   border-radius: 6px;
@@ -247,55 +235,267 @@ body {
   color: var(--mule-flow-font-color);
   padding: 4px 10px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
-.flow-header-button:hover {
+.canvas-pane-button:hover {
   border-color: var(--mule-node-hover-border-color);
   background: rgba(87, 163, 253, 0.06);
 }
 
-.flow-header-button.active {
+.canvas-pane-button.active {
   background: rgba(1, 118, 211, 0.12);
   border-color: var(--mule-node-selected-border-color);
 }
 
-/* ------- React Flow edge styling ------------------------------------------ */
-
-.react-flow__edge-path {
-  stroke: var(--mule-edge-color);
-  stroke-width: 1.5;
+/* The scroll surface lets long flows (many processors) overflow vertically
+   while the side panel remains anchored. Width-clipped so the column stays
+   centred on wide canvases. */
+.readable-flow-scroll {
+  flex: 1;
+  overflow-y: auto;
+  /* Padding-bottom is generous so the zoom-controls cluster (absolute,
+     bottom-left of canvas-pane) doesn't clip the last node when the chain
+     scrolls. Top padding is tight — the toolbar sits just above. */
+  padding: 16px 24px 64px;
 }
 
-.react-flow__edge.selected .react-flow__edge-path,
-.react-flow__edge:hover .react-flow__edge-path {
-  stroke: var(--mule-node-selected-border-color);
-  stroke-width: 2;
+/* The container is just a layout grouping — no white card, no border. The
+   canvas's blue background shows through, and the nodes inside provide the
+   visual structure on their own. The header card sits flush at the top of
+   the column; processor nodes nest below it indented by --readable-nest-indent
+   so the hierarchy reads visually. */
+.readable-flow-container {
+  --readable-nest-indent: 36px;
+  width: 100%;
+  max-width: 760px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* Tight gap — the line connectors handle most of the inter-node spacing. */
+  gap: 0;
 }
 
-.react-flow__arrowhead path {
-  fill: var(--mule-edge-color);
-  stroke: var(--mule-edge-color);
+/* Error-handler container — keeps the same transparent treatment as the
+   main container; the red tint comes from the error-header label and the
+   per-node tint, not a card background. */
+.readable-flow-container.readable-flow-error {
+  margin-top: 8px;
 }
 
-.react-flow__handle {
-  width: 8px;
-  height: 8px;
-  background: var(--mule-node-handler-color);
-  border: 2px solid white;
+.readable-error-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c53030;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  /* Aligns with the indented inner-node column so the label sits flush
+     with the top of the (nested) error-handler card. */
+  margin: 0 0 6px var(--readable-nest-indent, 36px);
 }
 
-/* ------- Side panel (click-to-inspect) ------------------------------------ */
+/* ------- The card itself (readable-node + readable-container) -------------
+ *
+ * Mirrors readable-ui's `.readable.readable-node` + `.readable.readable-container`
+ * — same border-radius, same shadow, same flexbox structure. */
+
+.readable.readable-node,
+.readable.readable-container {
+  cursor: pointer;
+  border-radius: var(--mule-node-border-radius);
+  border: 1px solid var(--mule-node-border-color);
+  background: var(--mule-node-background-color);
+  box-shadow: 0px 3px 4px var(--mule-node-box-shadow-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  /* Compact card: lower min-height + tighter padding so the chain reads
+     as a zoomed-out summary, not a step-by-step inspector. */
+  min-height: 38px;
+  padding: 6px 12px;
+  position: relative;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+  outline: none;
+}
+
+/* Processor/trigger/error-handler nodes nest under the header card with a
+   left margin and reduced width — so they visually fall under the flow's
+   parent rather than running edge-to-edge. */
+.readable-flow-container > .readable.readable-node {
+  width: calc(100% - var(--readable-nest-indent, 36px));
+  margin-left: var(--readable-nest-indent, 36px);
+}
+
+/* The flow header card spans the full container width — it IS the parent. */
+.readable-flow-container > .readable.readable-container {
+  width: 100%;
+}
+
+.readable.readable-node:hover,
+.readable.readable-container:hover {
+  border-color: var(--mule-node-hover-border-color);
+}
+
+.readable.readable-node.selected,
+.readable.readable-container.selected {
+  border-color: var(--mule-node-selected-border-color);
+  box-shadow:
+    0 0 0 2px rgba(1, 118, 211, 0.14),
+    0px 3px 4px var(--mule-node-box-shadow-color);
+}
+
+/* Trigger sits at the top of the chain — slightly more visual emphasis,
+   matching readable-ui's pattern of marking the entrypoint. */
+.readable.readable-node.readable-trigger {
+  border-color: rgba(1, 118, 211, 0.3);
+}
+
+/* Error-handler sub-nodes (logger inside on-error-propagate, etc.) inherit
+   the red tint from the container — but the card itself stays white. */
+
+.readable .readableLeft {
+  display: flex;
+  align-items: center;
+  width: calc(100% - 28px);
+  min-width: 0;
+}
+
+.readable.readable-has-description .readableLeft {
+  align-items: flex-start;
+}
+
+.readable .readableNodeIcon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.readable .readableNodeIcon svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+/* The flow header pill uses a slightly larger icon to balance the
+   container's wider footprint. */
+.readable.readable-flow-header .readableNodeIcon {
+  width: 32px;
+  height: 32px;
+}
+
+.readable.readable-flow-header .readableNodeIcon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.readable .readableLabelCont {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin-left: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.readable .nodeType,
+.readable .customText {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.readable .nodeType {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--mule-readable-node-label-color);
+}
+
+.readable .customText {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--mule-readable-node-description-color);
+}
+
+/* The flow header card uses the larger label as the bold flow name. */
+.readable.readable-flow-header .nodeType {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mule-flow-list-title-color);
+}
+
+.readable.readable-flow-header .customText {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--mule-readable-node-label-color);
+  font-weight: 400;
+}
+
+/* ------- Line connector between nodes ------------------------------------- */
+/* A short vertical line that visually wires consecutive nodes together —
+   sits in the icon column (28px wide) so it lines up under the icon of
+   the node above + the icon of the node below. The header card is full-
+   width, so the line beneath it lives in the SAME indented column the
+   processor nodes occupy. */
+
+.readable-line-connector {
+  /* Align the line with the centre of the indented node's icon column:
+     - --readable-nest-indent (36px) → indented node's left edge
+     - 12px                          → card padding-left
+     - 14px                          → half the 28px icon
+     - -1px                          → centre the 2px stroke
+     Total ≈ 61px from container left.
+     The header→first-node line lands slightly off-axis from the header's
+     own icon — acceptable given the rest of the chain reads vertically
+     through the same column. */
+  width: 0;
+  height: 14px;
+  border-left: 2px solid var(--mule-edge-color, #57a3fd);
+  margin-left: calc(var(--readable-nest-indent, 36px) + 12px + 14px - 1px);
+  pointer-events: none;
+}
+
+/* ------- Side panel (click-to-inspect) ------------------------------------
+ *
+ * Collapsed by default. When a node is selected `.is-open` flips on, the
+ * width transitions from 0 → 360px, and the canvas-pane reflows to take
+ * the freed space (it's a flex sibling). Closed panel renders nothing
+ * inside; the empty-state hint moved into the canvas as a subtle
+ * "click a node" affordance baked into the toolbar.
+ */
 
 .side-panel {
-  width: 360px;
+  width: 0;
+  flex-shrink: 0;
   background: white;
-  border-left: 1px solid var(--mule-node-border-color);
+  border-left: 1px solid transparent;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: none;
+  transition:
+    width 220ms cubic-bezier(0.2, 0, 0, 1),
+    border-left-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.side-panel.is-open {
+  width: 360px;
+  border-left-color: var(--mule-node-border-color);
   box-shadow: -3px 0 4px rgba(1, 68, 134, 0.06);
 }
 
@@ -422,4 +622,188 @@ body {
   color: var(--mule-readable-node-label-color);
   padding: 20px;
   text-align: center;
+}
+
+/* ------- Test Connection section ----------------------------------------- */
+
+.side-panel-test-section {
+  background: rgba(87, 163, 253, 0.06);
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: var(--mule-node-border-radius);
+  padding: 12px 14px;
+}
+
+.side-panel-test-section .side-panel-section-title {
+  margin-bottom: 10px;
+}
+
+.test-connection-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.test-connection-button {
+  align-self: flex-start;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--mule-node-selected-border-color);
+  background: var(--mule-node-handler-color);
+  color: white;
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.test-connection-button:hover:not(:disabled) {
+  background: #015fab;
+}
+
+.test-connection-button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.test-connection-button.is-success {
+  background: #2e844a;
+  border-color: #2e844a;
+}
+
+.test-connection-button.is-error {
+  background: #c53030;
+  border-color: #c53030;
+}
+
+.test-connection-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mule-readable-node-label-color);
+}
+
+.test-connection-result {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: white;
+  border: 1px solid var(--mule-node-border-color);
+  color: var(--mule-readable-node-description-color);
+}
+
+.test-connection-result.is-success {
+  border-color: rgba(46, 132, 74, 0.45);
+  background: rgba(46, 132, 74, 0.08);
+}
+
+.test-connection-result.is-error {
+  border-color: rgba(197, 48, 48, 0.4);
+  background: rgba(197, 48, 48, 0.06);
+}
+
+.test-connection-summary {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mule-readable-node-label-color);
+}
+
+/* Credential editor — collapsed by default; expand to override resolved
+   placeholder values without touching config.yaml. */
+
+.test-credentials-block {
+  margin-top: 12px;
+}
+
+.test-credentials-toggle {
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mule-flow-font-color);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-sans);
+}
+
+.test-credentials-toggle:hover {
+  color: var(--mule-node-selected-border-color);
+}
+
+.test-credentials-form {
+  margin-top: 8px;
+  padding: 10px;
+  background: white;
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.test-credentials-hint {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--mule-readable-node-label-color);
+  line-height: 1.4;
+}
+
+.test-credentials-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.test-credentials-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mule-readable-node-label-color);
+}
+
+.test-credentials-input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: 4px;
+  background: white;
+  color: var(--mule-readable-node-description-color);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.test-credentials-input:focus {
+  border-color: var(--mule-node-selected-border-color);
+  box-shadow: 0 0 0 2px rgba(1, 118, 211, 0.14);
+}
+
+.test-credentials-input::placeholder {
+  color: var(--mule-readable-node-label-color);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.test-credentials-clear {
+  align-self: flex-start;
+  margin-top: 4px;
+  background: transparent;
+  border: 1px solid var(--mule-node-border-color);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--mule-readable-node-label-color);
+  cursor: pointer;
+}
+
+.test-credentials-clear:hover {
+  color: var(--mule-flow-font-color);
+  border-color: var(--mule-node-hover-border-color);
 }

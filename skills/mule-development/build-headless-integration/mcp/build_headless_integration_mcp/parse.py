@@ -14,32 +14,45 @@ The graph is intentionally simple for v1:
 Shape returned by `parse_flow_xml`:
 
     {
-      "flows": [
+      "flows": [ ... ],
+      "configs": {
+        "<config-name>": {
+          "name": "Salesforce_Config",
+          "configElement": "salesforce:sfdc-config",
+          "connector": "salesforce",          // RDS connector name
+          "providerName": "basic",            // RDS providerName
+          "providerElement": "salesforce:basic",
+          "providerAttributes": {"username": "${...}", "password": "${...}"},
+          "configAttributes": {"name": "..."},
+        },
+        ...
+      },
+      "diagnostics": ["..."]   // non-fatal parse notes for the agent
+    }
+
+Each `<flow>` / `<sub-flow>` resolves to:
+
+    {
+      "id": "<flow-name>",
+      "name": "<flow-name>",
+      "kind": "flow" | "sub-flow",
+      "doc": {"name": "...", "description": "..."},
+      "nodes": [
         {
-          "id": "<flow-name>",
-          "name": "<flow-name>",
-          "kind": "flow" | "sub-flow",
+          "id": "<flow-name>::<index>",
+          "kind": "trigger" | "processor" | "container" | "error-handler",
+          "label": "<short label>",
+          "elementName": "salesforce:query",  // namespaced XML tag
+          "attributes": {"soql": "...", "config-ref": "...", ...},
           "doc": {"name": "...", "description": "..."},
-          "nodes": [
-            {
-              "id": "<flow-name>::<index>",
-              "kind": "trigger" | "processor" | "container" | "error-handler",
-              "label": "<short label>",
-              "elementName": "salesforce:query",  // namespaced XML tag
-              "attributes": {"soql": "...", "config-ref": "...", ...},
-              "doc": {"name": "...", "description": "..."},
-              "branches": 3,        // only for containers
-            },
-            ...
-          ],
-          "edges": [
-            {"id": "<a>-><b>", "source": "<a>", "target": "<b>"},
-            ...
-          ]
+          "branches": 3,        // only for containers
         },
         ...
       ],
-      "diagnostics": ["..."]   // non-fatal parse notes for the agent
+      "edges": [
+        {"id": "<a>-><b>", "source": "<a>", "target": "<b>"},
+        ...
+      ]
     }
 
 Containers like <try> are not expanded in v1: a real nested visualisation
@@ -184,22 +197,83 @@ def parse_flow_xml(xml_path: str | Path) -> dict[str, Any]:
 
     diagnostics: list[str] = []
     flows: list[dict[str, Any]] = []
+    configs: dict[str, dict[str, Any]] = {}
 
     for child in root:
         local = _localname(child.tag)
         if local in {"flow", "sub-flow"}:
             flows.append(_parse_flow(child, kind=local, diagnostics=diagnostics))
-        elif local in _NON_FLOW_TOPLEVEL or "-config" in local:
-            # Skip configs and properties — they're not flow steps.
+        elif local in _NON_FLOW_TOPLEVEL:
+            continue
+        elif "-config" in local or local == "config":
+            # Connector configs — capture so the canvas can offer Test Connection
+            # against the named config-ref. Skip core configs that have no
+            # connection provider (e.g. <configuration-properties>).
+            entry = _parse_config(child)
+            if entry is not None:
+                configs[entry["name"]] = entry
             continue
         else:
-            # Top-level element we don't recognise. Note it but don't fail.
             diagnostics.append(f"top-level <{local}> ignored (not a flow)")
 
     if not flows:
         diagnostics.append("no <flow> or <sub-flow> elements found in document")
 
-    return {"flows": flows, "diagnostics": diagnostics}
+    return {"flows": flows, "configs": configs, "diagnostics": diagnostics}
+
+
+def _parse_config(el: etree._Element) -> dict[str, Any] | None:
+    """Extract a connector config block: name, connector, provider, attrs.
+
+    Mule connector configs have shape:
+        <salesforce:sfdc-config name="Salesforce_Config">
+            <salesforce:basic username="..." password="..." />
+        </salesforce:sfdc-config>
+
+    The first non-doc element child is the connection provider; its local
+    name is the providerName the RDS test-connection call expects, its
+    attributes are the credential fields. Configs without a child provider
+    (e.g. <http:listener-config> with `<http:listener-connection>`) follow
+    the same pattern — connection-provider is the only element child.
+
+    Returns None when the config has no name attribute or no provider child
+    (those can't be tested through RDS anyway).
+    """
+    name = el.get("name")
+    if not name:
+        return None
+
+    prefix = _prefix(el.tag)
+    local = _localname(el.tag)
+    config_element = f"{prefix}:{local}" if prefix else local
+
+    provider_el = None
+    for sub in el:
+        if not isinstance(sub.tag, str):
+            continue
+        sub_local = _localname(sub.tag)
+        if sub_local in {"reconnection", "expiration-policy"}:
+            continue
+        provider_el = sub
+        break
+
+    if provider_el is None:
+        return None
+
+    provider_local = _localname(provider_el.tag)
+    provider_prefix = _prefix(provider_el.tag)
+
+    return {
+        "name": name,
+        "configElement": config_element,
+        "connector": prefix or provider_prefix,
+        "providerName": provider_local,
+        "providerElement": (
+            f"{provider_prefix}:{provider_local}" if provider_prefix else provider_local
+        ),
+        "providerAttributes": _attrs(provider_el),
+        "configAttributes": _attrs(el),
+    }
 
 
 def _parse_flow(

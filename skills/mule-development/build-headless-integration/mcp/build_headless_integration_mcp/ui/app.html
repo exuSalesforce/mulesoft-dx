@@ -5,14 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mule Flow Canvas</title>
 
-    <!-- React Flow's stylesheet must load before any nodes render. We use
-         reactflow@11 (the legacy package name) rather than @xyflow/react@12
-         because v11's UMD bundle only depends on React + ReactDOM globals,
-         while v12's UMD additionally requires `react/jsx-runtime` to be
-         available as a separate global — which React 18's UMD doesn't
-         expose. v11 is feature-equivalent for what we render. -->
-    <link rel="stylesheet" href="https://unpkg.com/reactflow@11/dist/style.css" />
-
     <style>
       /*__APP_CSS__*/
     </style>
@@ -22,9 +14,12 @@
       <div class="loading">Waiting for flow data…</div>
     </div>
 
-    <!-- React + ReactFlow + dagre via UMD bundles. The CSP whitelist for
-         this iframe (set on the resource's _meta.ui.csp.resourceDomains) is
-         what permits these external script loads. -->
+    <!-- React only. We render the readable-ui layout in pure CSS — the
+         canvas is a vertical chain inside a rounded container, not a
+         free-form DAG, so a graph layout engine would be more machinery
+         than the problem needs. The CSP whitelist for this iframe (set on
+         the resource's _meta.ui.csp.resourceDomains) permits these script
+         loads. -->
     <script
       crossorigin
       src="https://unpkg.com/react@18/umd/react.production.min.js"
@@ -32,14 +27,6 @@
     <script
       crossorigin
       src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
-    ></script>
-    <script
-      crossorigin
-      src="https://unpkg.com/reactflow@11/dist/umd/index.js"
-    ></script>
-    <script
-      crossorigin
-      src="https://unpkg.com/@dagrejs/dagre@1/dist/dagre.min.js"
     ></script>
 
     <script>

@@ -87,6 +87,29 @@ def test_top_level_configs_are_skipped() -> None:
     assert "configuration-properties" not in element_names
 
 
+def test_configs_block_captures_provider_for_test_connection() -> None:
+    """`configs` map carries the per-config metadata the canvas needs to
+    drive Test Connection: connector, providerName, provider attributes."""
+    xml_path = _FIXTURES / "sf-to-twilio.xml"
+    graph = parse_flow_xml(xml_path)
+
+    configs = graph["configs"]
+    # Both connector configs are present, indexed by their `name` attribute.
+    assert "Salesforce_Config" in configs
+    assert "Twilio_Config" in configs
+
+    sfdc = configs["Salesforce_Config"]
+    assert sfdc["connector"] == "salesforce"
+    assert sfdc["providerName"] == "basic"
+    assert sfdc["providerElement"] == "salesforce:basic"
+    assert "username" in sfdc["providerAttributes"]
+    assert "password" in sfdc["providerAttributes"]
+
+    twilio = configs["Twilio_Config"]
+    assert twilio["connector"] == "twilio"
+    assert twilio["providerName"] == "account-sid-auth-token"
+
+
 def test_scheduler_trigger() -> None:
     """A flow whose first child is <scheduler> emits a trigger node."""
     xml_path = _FIXTURES / "scheduler-flow.xml"

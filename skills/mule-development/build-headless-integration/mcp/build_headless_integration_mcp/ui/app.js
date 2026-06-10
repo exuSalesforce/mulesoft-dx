@@ -2,15 +2,18 @@
  *
  * The host (Claude Desktop) loads this file inside a sandboxed iframe.
  * On a successful render_mule_flow tool call, the host sends the tool
- * result via a postMessage notification; we extract the JSON graph from
- * the text content block and feed it into ReactFlow + dagre.
+ * result via a postMessage notification; we render the graph as a
+ * vertical readable-ui chain inside a rounded container card.
+ *
+ * Visual port of mule-dx-mule-dev-vscode/src/views/xml-editor/app/readable-ui/
+ * scoped to the v1 case (single linear flow, no branches expanded).
  *
  * Self-contained: this file does not depend on the omni-app shared
  * mcp_app_client.js — we inline a minimal subset of that client below
  * so the skill ships standalone.
  *
  * Dependencies expected on `window` (loaded via UMD in app.html):
- *   React, ReactDOM, ReactFlow, dagre
+ *   React, ReactDOM
  */
 
 (() => {
@@ -33,12 +36,6 @@
   }
   if (typeof window.ReactDOM === "undefined") {
     return _bootError("ReactDOM did not load (window.ReactDOM undefined).");
-  }
-  if (typeof window.ReactFlow === "undefined") {
-    return _bootError("ReactFlow did not load (window.ReactFlow undefined). Check the CDN URL in app.html.");
-  }
-  if (typeof window.dagre === "undefined") {
-    return _bootError("dagre did not load (window.dagre undefined).");
   }
 
   // ---- Minimal MCP App postMessage client ---------------------------------
@@ -82,6 +79,18 @@
      */
     requestDisplayMode(mode) {
       return this._request("ui/request-display-mode", { mode });
+    }
+
+    /** Ask the host to call a tool on the MCP server. Resolves with the
+     * tool's CallToolResult (the host re-posts the same envelope it would
+     * deliver via ui/notifications/tool-result, but with a matching id).
+     *
+     * Mirrors mulesoft-omni-app's mcp_app_client.callServerTool. Used by
+     * the side panel's "Test Connection" button to invoke
+     * `test_connection(project_dir, config_ref)`.
+     */
+    callServerTool(name, args = {}) {
+      return this._request("tools/call", { name, arguments: args });
     }
 
     /** True when the host advertises support for the requested mode. */
@@ -164,131 +173,170 @@
     }
   }
 
-  // ---- Layout ------------------------------------------------------------
-  //
-  // Vertical top-to-bottom layout via dagre. ReactFlow doesn't ship a
-  // layout engine; dagre is the canonical choice (matches what the
-  // 2026-05-18 design spec calls out for the omni-app canvas page).
-
-  // Sized to match the .flow-node CSS (240×60 + a bit of breathing room) so
-  // React Flow's hit-testing and dagre's layout stay in sync with what's
-  // actually rendered. RANK_SEP echoes readable-ui's --readable-layout-gap (16px)
-  // padded with edge-routing room.
-  const NODE_WIDTH = 240;
-  const NODE_HEIGHT = 60;
-  const RANK_SEP = 48;
-  const NODE_SEP = 32;
-
-  function layoutGraph(nodes, edges) {
-    const dagre = window.dagre;
-    if (!dagre) {
-      // Fall back to a stacked layout if dagre failed to load.
-      return nodes.map((n, i) => ({
-        ...n,
-        position: { x: 0, y: i * (NODE_HEIGHT + RANK_SEP) },
-      }));
-    }
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: "TB", ranksep: RANK_SEP, nodesep: NODE_SEP });
-    g.setDefaultEdgeLabel(() => ({}));
-
-    for (const n of nodes) g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-    for (const e of edges) g.setEdge(e.source, e.target);
-
-    dagre.layout(g);
-
-    return nodes.map((n) => {
-      const pos = g.node(n.id);
-      return {
-        ...n,
-        position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
-      };
-    });
-  }
-
   // ---- React components --------------------------------------------------
 
-  const { useEffect, useMemo, useState, useCallback } = window.React;
+  const { useEffect, useState, useCallback } = window.React;
   const e = window.React.createElement;
-  // window.ReactFlow is set by the reactflow@11 UMD bundle in app.html.
-  // Boot guards above already verified its presence — this is just a local alias.
-  const RF = window.ReactFlow;
 
-  const { ReactFlow, Background, Controls } = RF;
-
-  /** Inline SVG renderer — server enriches each node with raw SVG markup. */
-  function NodeIcon({ svgMarkup }) {
+  /** Inline SVG renderer — server enriches each node with raw SVG markup.
+   * Wraps in a fixed-size container so the .icon's CSS-driven downscaling
+   * stays predictable across icon shapes. */
+  function NodeIcon({ svgMarkup, className }) {
     if (!svgMarkup) {
-      return e("div", { className: "flow-node-icon" });
+      return e("div", { className: className || "flow-node-icon" });
     }
     return e("div", {
-      className: "flow-node-icon",
+      className: className || "flow-node-icon",
       dangerouslySetInnerHTML: { __html: svgMarkup },
     });
   }
 
-  /** Card per Mule processor. Visual port of readable-ui ReadableNode. */
-  function FlowNode({ data, selected }) {
-    const { node, onSelect } = data;
+  /** Visual port of readable-ui ReadableNode.tsx (v1 scope: no kebab,
+   * no breakpoints, no decorators). The two-line label format
+   * (type → docName) matches the screenshot. */
+  function FlowNode({ node, selected, onSelect }) {
+    const docName = (node.doc && node.doc.name) || "";
+    const description = (node.doc && node.doc.description) || "";
+
+    // Two display tiers matching readable-ui:
+    //   nodeType row  — small grey label (the doc:name when present, else
+    //                    the namespaced element name)
+    //   customText row — the doc:description (when present)
+    // Falls back to elementName + label when no doc:* attributes exist.
+    const topLabel = docName || node.elementName;
+    const bottomLabel = description || (docName ? null : node.label);
+
     return e(
       "div",
       {
-        className: "flow-node" + (selected ? " selected" : ""),
+        className:
+          "readable readable-node" +
+          (selected ? " selected" : "") +
+          (bottomLabel ? " readable-has-description" : "") +
+          (node.kind === "error-handler" ? " readable-error-tinted" : "") +
+          (node.kind === "trigger" ? " readable-trigger" : ""),
         onClick: () => onSelect(node),
+        tabIndex: 0,
+        "data-testid": "readable-node-" + node.id,
       },
-      e(NodeIcon, { svgMarkup: node.icon }),
       e(
         "div",
-        { className: "flow-node-body" },
-        e("div", { className: "flow-node-type" }, node.elementName),
-        e("div", { className: "flow-node-label" }, node.label),
+        { className: "readableLeft" },
+        e(NodeIcon, { svgMarkup: node.icon, className: "readableNodeIcon" }),
+        e(
+          "div",
+          { className: "readableLabelCont" },
+          topLabel
+            ? e("div", { className: "nodeType", title: topLabel }, topLabel)
+            : null,
+          bottomLabel
+            ? e(
+                "div",
+                { className: "customText", title: bottomLabel },
+                bottomLabel,
+              )
+            : null,
+        ),
       ),
-      // Handles drive React Flow edge routing. isConnectable=false because
-      // the canvas is read-only in v1.
-      e(RF.Handle, {
-        type: "target",
-        position: RF.Position.Top,
-        isConnectable: false,
-      }),
-      e(RF.Handle, {
-        type: "source",
-        position: RF.Position.Bottom,
-        isConnectable: false,
-      }),
     );
   }
 
-  const nodeTypes = { flowNode: FlowNode };
+  /** Vertical line between two consecutive nodes — replaces the `+` glyph
+   * for the zoomed-out canvas read. Pure CSS rule (height + border) inside
+   * a centered cell so it lines up with the icon column above it. */
+  function LineConnector() {
+    return e("div", {
+      className: "readable-line-connector",
+      "aria-hidden": "true",
+    });
+  }
 
-  function FlowCanvas({ flow, selectedId, onSelectNode, displayMode, onToggleFullscreen, fullscreenAvailable }) {
-    const laidOut = useMemo(() => {
-      return layoutGraph(flow.nodes, flow.edges);
-    }, [flow]);
-
-    const rfNodes = useMemo(
-      () =>
-        laidOut.map((n) => ({
-          id: n.id,
-          type: "flowNode",
-          position: n.position,
-          data: { node: n, onSelect: onSelectNode },
-          selected: n.id === selectedId,
-        })),
-      [laidOut, selectedId, onSelectNode],
+  /** Header pill that crowns the flow container — visual port of
+   * ReadableTopContainer's caption. Renders the flow's display name +
+   * description, plus an inline-svg flow icon that mirrors the chevron
+   * shape used in the vscode canvas. */
+  function FlowHeaderCard({ flow, selected, onSelect }) {
+    const docName = (flow.doc && flow.doc.name) || flow.name;
+    const description = (flow.doc && flow.doc.description) || "";
+    return e(
+      "div",
+      {
+        className:
+          "readable readable-container readable-flow-header" +
+          (selected ? " selected" : ""),
+        onClick: () => onSelect && onSelect({ id: "__flow_header__", flow }),
+      },
+      e(
+        "div",
+        { className: "readableLeft" },
+        e(
+          "div",
+          { className: "readableNodeIcon flow-header-svg" },
+          e(
+            "svg",
+            { width: 64, height: 64, viewBox: "0 0 64 64" },
+            e("circle", { cx: 32, cy: 32, r: 29, fill: "#0176D3" }),
+            e(
+              "g",
+              { className: "icon", fill: "#FFFFFF" },
+              e("path", {
+                d: "M22 22h20v4H22zM22 30h20v4H22zM22 38h14v4H22z",
+                fill: "#FFFFFF",
+              }),
+            ),
+          ),
+        ),
+        e(
+          "div",
+          { className: "readableLabelCont" },
+          e("div", { className: "nodeType" }, docName),
+          description
+            ? e(
+                "div",
+                { className: "customText", title: description },
+                description,
+              )
+            : null,
+        ),
+      ),
     );
+  }
 
-    const rfEdges = useMemo(
-      () =>
-        flow.edges.map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          type: "smoothstep",
-        })),
-      [flow.edges],
+  // Default zoom — slightly under 1.0 so the chain reads as a "summary"
+  // rather than a step-by-step inspector. Min/max bracket the useful range.
+  const ZOOM_DEFAULT = 0.85;
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 1.5;
+  const ZOOM_STEP = 0.1;
+
+  function FlowCanvas({
+    flow,
+    selectedId,
+    onSelectNode,
+    displayMode,
+    onToggleFullscreen,
+    fullscreenAvailable,
+  }) {
+    // readable-ui groups the chain into two visual sections: the main
+    // processor chain and an error-handler block tucked below. The parser
+    // already marks the error-handler with kind="error-handler" — we just
+    // need to split the lists.
+    const mainNodes = flow.nodes.filter((n) => n.kind !== "error-handler");
+    const errorNodes = flow.nodes.filter((n) => n.kind === "error-handler");
+
+    const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+
+    const clampZoom = (z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+    const zoomIn = useCallback(
+      () => setZoom((z) => clampZoom(Math.round((z + ZOOM_STEP) * 100) / 100)),
+      [],
     );
+    const zoomOut = useCallback(
+      () => setZoom((z) => clampZoom(Math.round((z - ZOOM_STEP) * 100) / 100)),
+      [],
+    );
+    const zoomReset = useCallback(() => setZoom(ZOOM_DEFAULT), []);
 
-    const flowHeaderName = (flow.doc && flow.doc.name) || flow.name;
     const flowHeaderMeta =
       flow.kind +
       " · " +
@@ -301,84 +349,442 @@
       { className: "canvas-pane" },
       e(
         "div",
-        { className: "flow-header-card" },
-        e(
-          "div",
-          { className: "flow-header-icon" },
-          // Inline SVG: a stylised flow chevron mirroring vscode's flow.svg
-          // without bundling another file. Matches the mule-blue palette.
-          e("svg", {
-            width: 24,
-            height: 24,
-            viewBox: "0 0 24 24",
-            fill: "none",
-            dangerouslySetInnerHTML: {
-              __html:
-                '<rect x="3" y="3" width="18" height="18" rx="6" fill="#0176D3" opacity="0.12"/>' +
-                '<path d="M8 7l5 5-5 5M11 7l5 5-5 5" stroke="#0176D3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
-            },
-          }),
-        ),
-        e(
-          "div",
-          { className: "flow-header-text" },
-          e("div", { className: "flow-header-name" }, flowHeaderName),
-          e("div", { className: "flow-header-meta" }, flowHeaderMeta),
-        ),
+        { className: "canvas-pane-toolbar" },
+        e("div", { className: "canvas-pane-meta" }, flowHeaderMeta),
         fullscreenAvailable
           ? e(
-              "div",
-              { className: "flow-header-actions" },
-              e(
-                "button",
-                {
-                  type: "button",
-                  className:
-                    "flow-header-button" +
-                    (displayMode === "fullscreen" ? " active" : ""),
-                  onClick: onToggleFullscreen,
-                  title:
-                    displayMode === "fullscreen"
-                      ? "Exit fullscreen"
-                      : "Expand to fullscreen",
-                },
-                displayMode === "fullscreen" ? "Exit fullscreen" : "Fullscreen",
-              ),
+              "button",
+              {
+                type: "button",
+                className:
+                  "canvas-pane-button" +
+                  (displayMode === "fullscreen" ? " active" : ""),
+                onClick: onToggleFullscreen,
+                title:
+                  displayMode === "fullscreen"
+                    ? "Exit fullscreen"
+                    : "Expand to fullscreen",
+              },
+              displayMode === "fullscreen" ? "Exit fullscreen" : "Fullscreen",
             )
           : null,
       ),
       e(
-        ReactFlow,
+        "div",
+        { className: "readable-flow-scroll" },
+        // Zoom transform sits on a wrapper inside the scroll surface, so
+        // scaling never resizes the scroll viewport itself — the user can
+        // still scroll the un-scaled column when content overflows. The
+        // transform-origin keeps the wrapper anchored at top-centre as it
+        // shrinks/grows so the chain stays where it is.
+        e(
+          "div",
+          {
+            className: "readable-flow-zoom",
+            style: { transform: "scale(" + zoom + ")" },
+          },
+          e(
+            "div",
+            { className: "readable-flow-container" },
+            e(FlowHeaderCard, {
+              flow,
+              selected: selectedId === "__flow_header__",
+              onSelect: onSelectNode,
+            }),
+            // Connect the flow-header card visually to the first processor
+            // when one exists — same line shape that wires consecutive
+            // processors below.
+            mainNodes.length ? e(LineConnector, { key: "header:line" }) : null,
+            // Main chain — each node followed by a vertical line except the
+            // last. The line is the connector handle that visually wires
+            // consecutive processors together (replaces the `+` insertion
+            // glyph from the editor since this canvas is read-only).
+            mainNodes.map((node, idx) =>
+              e(
+                window.React.Fragment,
+                { key: node.id },
+                e(FlowNode, {
+                  node,
+                  selected: node.id === selectedId,
+                  onSelect: onSelectNode,
+                }),
+                idx < mainNodes.length - 1
+                  ? e(LineConnector, { key: node.id + ":line" })
+                  : null,
+              ),
+            ),
+          ),
+          errorNodes.length
+            ? e(
+                "div",
+                { className: "readable-flow-container readable-flow-error" },
+                e(
+                  "div",
+                  { className: "readable-error-header" },
+                  e(
+                    "svg",
+                    {
+                      width: 14,
+                      height: 14,
+                      viewBox: "0 0 14 14",
+                      fill: "#EA001E",
+                      "aria-hidden": "true",
+                    },
+                    e("circle", { cx: 7, cy: 7, r: 6, fill: "#FBE9E9" }),
+                    e("path", {
+                      d: "M7 3v4M7 9.5v.5",
+                      stroke: "#EA001E",
+                      strokeWidth: 1.5,
+                      strokeLinecap: "round",
+                    }),
+                  ),
+                  "Error handler",
+                ),
+                errorNodes.map((node) =>
+                  e(FlowNode, {
+                    key: node.id,
+                    node,
+                    selected: node.id === selectedId,
+                    onSelect: onSelectNode,
+                  }),
+                ),
+              )
+            : null,
+        ),
+      ),
+      // Zoom controls float bottom-left of the canvas pane, mirroring the
+      // ACB canvas (and most diagram tools). They're absolute-positioned
+      // over the scroll surface so they don't reflow with the chain.
+      e(ZoomControls, {
+        zoom,
+        onZoomIn: zoomIn,
+        onZoomOut: zoomOut,
+        onReset: zoomReset,
+      }),
+    );
+  }
+
+  /** Fixed cluster of three buttons: zoom-out · reset · zoom-in.
+   * Disabled state on the +/- buttons when at the bracket limits so users
+   * get visual feedback that more clicks won't do anything. */
+  function ZoomControls({ zoom, onZoomIn, onZoomOut, onReset }) {
+    const atMin = zoom <= ZOOM_MIN + 1e-6;
+    const atMax = zoom >= ZOOM_MAX - 1e-6;
+    return e(
+      "div",
+      { className: "canvas-zoom-controls", "aria-label": "Zoom controls" },
+      e(
+        "button",
         {
-          nodes: rfNodes,
-          edges: rfEdges,
-          nodeTypes,
-          fitView: true,
-          // Generous top padding leaves room for the floating flow-header card.
-          fitViewOptions: { padding: 0.25, minZoom: 0.5, maxZoom: 1.2 },
-          nodesDraggable: false,
-          nodesConnectable: false,
-          elementsSelectable: true,
-          panOnDrag: true,
-          zoomOnScroll: true,
-          proOptions: { hideAttribution: true },
+          type: "button",
+          className: "canvas-zoom-button",
+          onClick: onZoomOut,
+          disabled: atMin,
+          title: "Zoom out",
+          "aria-label": "Zoom out",
         },
-        e(Background, { color: "#e5e7eb", gap: 16 }),
-        e(Controls, { showInteractive: false }),
+        // Use HTML entity for em-dash via createElement is fine — kept
+        // ASCII here so the bundled HTML stays mid-codepoint-clean.
+        e("span", { "aria-hidden": "true" }, "−"),
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "canvas-zoom-button canvas-zoom-reset",
+          onClick: onReset,
+          title: "Reset zoom (" + Math.round(ZOOM_DEFAULT * 100) + "%)",
+          "aria-label": "Reset zoom",
+        },
+        Math.round(zoom * 100) + "%",
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "canvas-zoom-button",
+          onClick: onZoomIn,
+          disabled: atMax,
+          title: "Zoom in",
+          "aria-label": "Zoom in",
+        },
+        e("span", { "aria-hidden": "true" }, "+"),
       ),
     );
   }
 
-  function SidePanel({ node, onClose }) {
-    if (!node) {
-      return e(
-        "aside",
-        { className: "side-panel" },
+  // Field-name heuristics for the credential form. Names matching any
+  // pattern in SECRET_KEYS render as <input type="password">; everything
+  // else renders as <input type="text">.
+  const SECRET_KEY_HINTS = [
+    "password",
+    "secret",
+    "token",
+    "key",
+    "credential",
+  ];
+
+  function isSecretField(name) {
+    const lower = name.toLowerCase();
+    return SECRET_KEY_HINTS.some((h) => lower.includes(h));
+  }
+
+  function TestConnectionSection({ node, configs, projectDir, mcpApp }) {
+    const configRef = node.attributes && node.attributes["config-ref"];
+    const config = configRef && configs ? configs[configRef] : null;
+    const [status, setStatus] = useState("idle"); // idle | running | success | error
+    const [result, setResult] = useState(null);
+    // Per-field credential overrides. Empty string ⇒ fall back to placeholder
+    // resolution (config.yaml + env vars) on the server. Re-keyed when the
+    // user clicks a different config-ref so values from one config don't
+    // bleed into another.
+    const [overrides, setOverrides] = useState({});
+    const [showCredEditor, setShowCredEditor] = useState(false);
+
+    // Reset state when the user clicks a different config so the form,
+    // result, and overrides all follow the selection. Keying on configRef
+    // (not node.id) keeps the form populated when clicking between two
+    // different processors that share a config-ref.
+    useEffect(() => {
+      setStatus("idle");
+      setResult(null);
+      setOverrides({});
+      setShowCredEditor(false);
+    }, [configRef]);
+
+    if (!configRef || !config) {
+      return null;
+    }
+
+    // Build the field list off the parsed flow XML — these are the
+    // attributes Mule will resolve when it spins the connection up.
+    // Skip non-credential book-keeping attrs (`reconnection`, `config-ref`)
+    // to match the server's filter; they aren't part of the wire body.
+    const formFields = Object.entries(config.providerAttributes || {})
+      .filter(([k]) => k !== "reconnection" && k !== "config-ref")
+      .map(([k, v]) => ({
+        name: k,
+        placeholder: typeof v === "string" ? v : "",
+        secret: isSecretField(k),
+      }));
+
+    const onClick = () => {
+      if (!mcpApp || !projectDir) {
+        setStatus("error");
+        setResult({
+          message:
+            "Iframe is not connected to the host yet — wait for initial render to settle and try again.",
+        });
+        return;
+      }
+      setStatus("running");
+      setResult(null);
+      mcpApp
+        .callServerTool("test_connection", {
+          project_dir: projectDir,
+          config_ref: configRef,
+          overrides,
+        })
+        .then((res) => {
+          // The host returns the full CallToolResult envelope — same shape
+          // app.js already parses for ui/notifications/tool-result.
+          const structured = res?.structuredContent;
+          const text = (res?.content || [])
+            .filter((c) => c.type === "text")
+            .map((c) => c.text)
+            .join("\n");
+          if (structured) {
+            setStatus(structured.success ? "success" : "error");
+            setResult(structured);
+          } else if (text) {
+            const looksOk = text.includes("✅");
+            setStatus(looksOk ? "success" : "error");
+            setResult({ message: text });
+          } else {
+            setStatus("error");
+            setResult({ message: "Tool returned no content." });
+          }
+        })
+        .catch((err) => {
+          setStatus("error");
+          setResult({ message: err.message || String(err) });
+        });
+    };
+
+    const onFieldChange = (name, value) => {
+      // Empty strings stay in the map so the input remains controlled —
+      // the server normalises whitespace-only/blank values to "no override".
+      setOverrides((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const onClearOverrides = () => {
+      setOverrides({});
+    };
+
+    const buttonLabel =
+      status === "running"
+        ? "Testing…"
+        : status === "success"
+          ? "Test Connection"
+          : status === "error"
+            ? "Retry Test Connection"
+            : "Test Connection";
+
+    return e(
+      "section",
+      { className: "side-panel-section side-panel-test-section" },
+      e("h3", { className: "side-panel-section-title" }, "Test Connection"),
+      e(
+        "div",
+        { className: "test-connection-row" },
+        e(
+          "button",
+          {
+            type: "button",
+            className:
+              "test-connection-button" +
+              (status === "running" ? " is-running" : "") +
+              (status === "success" ? " is-success" : "") +
+              (status === "error" ? " is-error" : ""),
+            disabled: status === "running",
+            onClick,
+          },
+          buttonLabel,
+        ),
         e(
           "div",
-          { className: "side-panel-empty" },
-          "Click a node to inspect its attributes.",
+          { className: "test-connection-meta" },
+          e("span", null, "config: " + configRef),
+          e(
+            "span",
+            null,
+            "connector: " +
+              (config.connector || "?") +
+              " · provider: " +
+              (config.providerName || "?"),
+          ),
         ),
+      ),
+      // Credentials editor — collapsed by default. The default round-trip
+      // uses the project's config.yaml; users only expand to override.
+      formFields.length
+        ? e(
+            "div",
+            { className: "test-credentials-block" },
+            e(
+              "button",
+              {
+                type: "button",
+                className: "test-credentials-toggle",
+                onClick: () => setShowCredEditor((v) => !v),
+              },
+              (showCredEditor ? "▾ " : "▸ ") +
+                "Override credentials (" +
+                formFields.length +
+                " field" +
+                (formFields.length === 1 ? "" : "s") +
+                ")",
+            ),
+            showCredEditor
+              ? e(
+                  "div",
+                  { className: "test-credentials-form" },
+                  e(
+                    "p",
+                    { className: "test-credentials-hint" },
+                    "Leave blank to use config.yaml + env vars. Typed values are sent only to RDS — never echoed in this panel or the chat.",
+                  ),
+                  formFields.map((f) =>
+                    e(
+                      "label",
+                      { key: f.name, className: "test-credentials-field" },
+                      e("span", { className: "test-credentials-label" }, f.name),
+                      e("input", {
+                        type: f.secret ? "password" : "text",
+                        className: "test-credentials-input",
+                        value: overrides[f.name] || "",
+                        placeholder:
+                          f.placeholder.includes("${")
+                            ? f.placeholder
+                            : "(default from config.yaml)",
+                        autoComplete: "off",
+                        spellCheck: false,
+                        onChange: (ev) =>
+                          onFieldChange(f.name, ev.target.value),
+                      }),
+                    ),
+                  ),
+                  Object.values(overrides).some((v) => v && v.trim())
+                    ? e(
+                        "button",
+                        {
+                          type: "button",
+                          className: "test-credentials-clear",
+                          onClick: onClearOverrides,
+                        },
+                        "Clear overrides",
+                      )
+                    : null,
+                )
+              : null,
+          )
+        : null,
+      status !== "idle"
+        ? e(
+            "div",
+            {
+              className:
+                "test-connection-result" +
+                (status === "success"
+                  ? " is-success"
+                  : status === "error"
+                    ? " is-error"
+                    : ""),
+            },
+            status === "running"
+              ? "Calling RDS at " +
+                  (result?.rdsUrl || "MULE_DX_RDS_URL") +
+                  "…"
+              : (status === "success" ? "✅ " : "❌ ") +
+                  (result?.message || "(no message)"),
+            result?.fieldsSent && result.fieldsSent.length
+              ? e(
+                  "div",
+                  { className: "test-connection-summary" },
+                  e(
+                    "span",
+                    null,
+                    "fields sent: " + result.fieldsSent.join(", "),
+                  ),
+                  result.fieldsOverridden && result.fieldsOverridden.length
+                    ? e(
+                        "span",
+                        null,
+                        "overridden: " + result.fieldsOverridden.join(", "),
+                      )
+                    : null,
+                )
+              : null,
+          )
+        : null,
+    );
+  }
+
+  function SidePanel({ node, configs, projectDir, mcpApp, onClose }) {
+    // The aside is always mounted so the width transition works in BOTH
+    // directions: closed→open (a freshly mounted aside snaps to width 360px
+    // with no animation otherwise) and open→closed. When `node` is null we
+    // collapse the width to 0; the inner content stays unrendered so closed
+    // panels don't hold focusable elements or hover targets.
+    const isOpen = Boolean(node);
+
+    if (!isOpen) {
+      return e(
+        "aside",
+        {
+          className: "side-panel",
+          "aria-hidden": "true",
+        },
       );
     }
 
@@ -388,7 +794,7 @@
 
     return e(
       "aside",
-      { className: "side-panel" },
+      { className: "side-panel is-open" },
       e(
         "header",
         { className: "side-panel-header" },
@@ -423,6 +829,12 @@
               e("p", { className: "side-panel-doc" }, node.doc.description),
             )
           : null,
+        e(TestConnectionSection, {
+          node,
+          configs,
+          projectDir,
+          mcpApp,
+        }),
         attributeRows.length
           ? e(
               "section",
@@ -569,7 +981,11 @@
 
     return e(
       "div",
-      { className: "canvas-shell" },
+      {
+        className:
+          "canvas-shell" +
+          (displayMode === "fullscreen" ? " is-fullscreen" : ""),
+      },
       // Multi-flow tabs (only when more than one flow exists; v1 typical
       // case is single-flow projects).
       graph.flows.length > 1
@@ -600,7 +1016,13 @@
         onToggleFullscreen: handleToggleFullscreen,
         fullscreenAvailable,
       }),
-      e(SidePanel, { node: selectedNode, onClose: () => setSelectedNode(null) }),
+      e(SidePanel, {
+        node: selectedNode,
+        configs: graph.configs || {},
+        projectDir: (graph.source && graph.source.projectDir) || null,
+        mcpApp: mcpAppRef.current,
+        onClose: () => setSelectedNode(null),
+      }),
     );
   }
 

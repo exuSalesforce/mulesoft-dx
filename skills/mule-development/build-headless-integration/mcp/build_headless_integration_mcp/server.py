@@ -9,8 +9,13 @@ Mirrors the conventions in mulesoft-omni-app/server_py/mcp_apps/.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import urllib.error
+import urllib.request
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.lowlevel.helper_types import ReadResourceContents
@@ -138,6 +143,184 @@ def _resolve_flow_xml(project_dir: str) -> Path:
     return xml_files[0]
 
 
+# ---- test-connection helpers --------------------------------------------------
+#
+# The canvas's "Test Connection" button calls a tool that resolves the config's
+# ${...} placeholders against the project's config.yaml + the user's
+# environment, then POSTs to RDS. Mirrors what ACB does at design time —
+# hits the same /v1/test-connection endpoint via the same MULE_DX_RDS_URL.
+
+# Mule's placeholder syntax inside attribute values: ${expr}, where `expr`
+# can be a dotted property path (resolved against config.yaml) or a bare
+# environment variable name. Captures the inner expression.
+_PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}")
+
+
+def _load_config_yaml(project_dir: Path) -> dict[str, Any]:
+    """Read src/main/resources/config.yaml as a dict.
+
+    Returns an empty dict if the file is absent — flows can run with all
+    values supplied via env vars only. lxml is already a dep; PyYAML isn't,
+    so we parse with the stdlib's small YAML-subset reader. The skill's
+    config.yaml uses `key: "value"` and nested mapping shapes — both fit
+    the subset.
+    """
+    cfg_path = project_dir / "src" / "main" / "resources" / "config.yaml"
+    if not cfg_path.is_file():
+        return {}
+
+    try:
+        # PyYAML is widely available but optional; import lazily so a fresh
+        # `pip install` of just FastMCP works for users who never test
+        # connections from the canvas.
+        import yaml  # type: ignore
+
+        with cfg_path.open(encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return data or {}
+    except ImportError:
+        return _yaml_fallback(cfg_path)
+
+
+def _yaml_fallback(path: Path) -> dict[str, Any]:
+    """Minimal YAML parser for the skill's config.yaml shape only.
+
+    Handles the indented `key: "value"` / nested mapping form that
+    `create_versionless_project.sh` writes. Not a general YAML parser —
+    arrays, anchors, multi-line strings are out of scope. PyYAML is the
+    preferred path; this fallback exists so the tool doesn't error out
+    on a system without it.
+    """
+    root: dict[str, Any] = {}
+    stack: list[tuple[int, dict[str, Any]]] = [(0, root)]
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.rstrip()
+        if not line or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        content = line.strip()
+        if ":" not in content:
+            continue
+        key, _, value = content.partition(":")
+        key = key.strip()
+        value = value.strip()
+
+        while stack and indent < stack[-1][0]:
+            stack.pop()
+        parent = stack[-1][1]
+
+        if not value:
+            child: dict[str, Any] = {}
+            parent[key] = child
+            stack.append((indent + 2, child))
+        else:
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            elif value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+            parent[key] = value
+
+    return root
+
+
+def _resolve_dotted(data: dict[str, Any], dotted: str) -> str | None:
+    """Walk `data` along a dot-separated key path. Returns None if missing."""
+    cur: Any = data
+    for part in dotted.split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return None
+    if isinstance(cur, str):
+        return cur
+    if cur is None:
+        return None
+    return str(cur)
+
+
+def _resolve_placeholders(value: str, cfg: dict[str, Any]) -> tuple[str, list[str]]:
+    """Replace ${...} occurrences in `value`. Returns (resolved, missing-keys).
+
+    Resolution order per placeholder:
+      1. `cfg` (config.yaml) — dotted lookup mirroring how Mule's
+         configuration-properties resolves ${twilio.from-number}.
+      2. The current process environment (each value cascaded through
+         config.yaml first; if config.yaml itself contains `${ENV_VAR}`,
+         that's also resolved against `os.environ`).
+    """
+    missing: list[str] = []
+
+    def resolve_one(key: str) -> str:
+        v = _resolve_dotted(cfg, key)
+        if v is not None:
+            # Recurse: config.yaml values may themselves carry ${...} (env refs).
+            inner, inner_missing = _resolve_placeholders(v, cfg)
+            missing.extend(inner_missing)
+            return inner
+        env = os.environ.get(key)
+        if env is not None:
+            return env
+        # Try uppercased / underscore-converted env var: twilio.from-number
+        # → TWILIO_FROM_NUMBER. Mirrors how the skill's create script
+        # generates default placeholders.
+        env_alt = os.environ.get(key.replace(".", "_").replace("-", "_").upper())
+        if env_alt is not None:
+            return env_alt
+        missing.append(key)
+        return ""
+
+    resolved = _PLACEHOLDER_RE.sub(lambda m: resolve_one(m.group(1)), value)
+    return resolved, missing
+
+
+def _post_rds_test_connection(
+    base_url: str,
+    *,
+    connector: str,
+    provider_name: str,
+    config_fields: dict[str, str],
+    timeout_s: float = 30.0,
+) -> dict[str, Any]:
+    """POST /v1/test-connection. Returns the JSON body or an error envelope."""
+    url = base_url.rstrip("/") + "/v1/test-connection"
+    body = json.dumps(
+        {
+            "connector": connector,
+            "providerName": provider_name,
+            "config": config_fields,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:  # noqa: S310
+            raw = resp.read()
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except json.JSONDecodeError:
+                return {
+                    "success": False,
+                    "message": (
+                        f"RDS returned non-JSON response (HTTP {resp.status}): "
+                        + raw.decode("utf-8", errors="replace")[:200]
+                    ),
+                }
+    except urllib.error.HTTPError as e:
+        # 4xx/5xx with a body — surface what RDS actually said.
+        try:
+            err_body = e.read().decode("utf-8", errors="replace")
+            return {"success": False, "message": f"HTTP {e.code}: {err_body[:200]}"}
+        except Exception:
+            return {"success": False, "message": f"HTTP {e.code}: {e.reason}"}
+    except urllib.error.URLError as e:
+        return {"success": False, "message": f"Cannot reach RDS at {url}: {e.reason}"}
+
+
 def _build_server() -> FastMCP:
     """Build and return the configured FastMCP server.
 
@@ -262,7 +445,210 @@ def _build_server() -> FastMCP:
         meta=ui_meta,
     )(render_mule_flow)
 
+    async def test_connection(
+        project_dir: str,
+        config_ref: str,
+        overrides: dict[str, str] | None = None,
+        rds_url: str | None = None,
+    ) -> CallToolResult:
+        """Test a named config's connection by calling RDS /v1/test-connection.
+
+        Args:
+            project_dir: Absolute path to the Mule project. The tool re-parses
+                the flow XML to look up the config by name and reads the
+                project's config.yaml to resolve ${...} placeholders.
+            config_ref: The `name` attribute of the connector config to test
+                (e.g. `Salesforce_Config`). Matches the `config-ref` value on
+                processor nodes.
+            overrides: Optional per-field credential overrides typed in the
+                canvas's side panel. Each non-empty value replaces the
+                config.yaml/env-resolved value for that field. Empty/missing
+                keys fall back to placeholder resolution. Values are sent
+                straight to RDS and never echoed back to the iframe.
+            rds_url: Optional override. Defaults to MULE_DX_RDS_URL or
+                http://localhost:8090 — the same env the ACB plugin reads.
+
+        Returns:
+            CallToolResult with structuredContent shaped as
+            `{success, message, configRef, connector, providerName,
+              rdsUrl, fieldsSent, fieldsOverridden}`. The iframe reads
+            structuredContent to update the side panel; the LLM in the
+            chat gets the same data via the text content block.
+
+            **No credential values appear in the response** — only field
+            *names*. This avoids leaking secrets into the chat transcript
+            (which screenshots, logs, and the model context all see).
+        """
+        project = Path(project_dir).expanduser().resolve()
+        if not project.is_dir():
+            msg = f"project_dir is not a directory: {project_dir}"
+            raise NotADirectoryError(msg)
+
+        xml_path = _resolve_flow_xml(str(project))
+        graph = parse_flow_xml(xml_path)
+
+        configs = graph.get("configs") or {}
+        config_entry = configs.get(config_ref)
+        if config_entry is None:
+            available = ", ".join(sorted(configs.keys())) or "(none)"
+            return _test_connection_result(
+                success=False,
+                message=(
+                    f"No config named '{config_ref}' in {xml_path.name}. "
+                    f"Available configs: {available}."
+                ),
+                config_ref=config_ref,
+                rds_url=rds_url or "",
+                connector="",
+                provider_name="",
+                fields_sent=[],
+                fields_overridden=[],
+            )
+
+        connector = config_entry.get("connector") or ""
+        provider_name = config_entry.get("providerName") or ""
+        provider_attrs = dict(config_entry.get("providerAttributes") or {})
+
+        # Normalise overrides: drop empty / whitespace-only values so the
+        # iframe can pre-fill the form without forcing the user to clear
+        # untouched fields back to placeholder resolution.
+        clean_overrides: dict[str, str] = {}
+        if overrides:
+            for k, v in overrides.items():
+                if isinstance(v, str) and v.strip():
+                    clean_overrides[k] = v
+
+        # Read config.yaml once and resolve every provider attribute.
+        cfg = _load_config_yaml(project)
+
+        resolved_fields: dict[str, str] = {}
+        missing_for_unoverridden: list[str] = []
+        # Non-credential attributes Mule injects/uses internally — not part
+        # of the test-connection request body.
+        _skip_attrs = {"reconnection", "config-ref"}
+        for key, val in provider_attrs.items():
+            if key in _skip_attrs:
+                continue
+            if key in clean_overrides:
+                # User-typed override wins. Values pass through verbatim.
+                resolved_fields[key] = clean_overrides[key]
+                continue
+            if isinstance(val, str):
+                resolved, missing = _resolve_placeholders(val, cfg)
+                resolved_fields[key] = resolved
+                missing_for_unoverridden.extend(missing)
+            else:
+                resolved_fields[key] = str(val)
+
+        # Allow overrides to introduce fields the XML doesn't declare —
+        # uncommon, but lets a user test e.g. `securityToken` without
+        # touching the project files. Skip empty values defensively.
+        for k, v in clean_overrides.items():
+            if k not in resolved_fields:
+                resolved_fields[k] = v
+
+        fields_sent = sorted(resolved_fields.keys())
+        fields_overridden = sorted(clean_overrides.keys())
+
+        if missing_for_unoverridden:
+            return _test_connection_result(
+                success=False,
+                message=(
+                    "Cannot resolve config placeholders: missing "
+                    + ", ".join(sorted(set(missing_for_unoverridden)))
+                    + ". Set them in config.yaml, as environment variables, "
+                    + "or type values into the side panel form."
+                ),
+                config_ref=config_ref,
+                rds_url=rds_url or os.environ.get(
+                    "MULE_DX_RDS_URL", "http://localhost:8090"
+                ),
+                connector=connector,
+                provider_name=provider_name,
+                fields_sent=fields_sent,
+                fields_overridden=fields_overridden,
+            )
+
+        base_url = (
+            rds_url
+            or os.environ.get("MULE_DX_RDS_URL")
+            or "http://localhost:8090"
+        )
+        rds_response = _post_rds_test_connection(
+            base_url,
+            connector=connector,
+            provider_name=provider_name,
+            config_fields=resolved_fields,
+        )
+
+        return _test_connection_result(
+            success=bool(rds_response.get("success")),
+            message=str(rds_response.get("message") or "(no message)"),
+            config_ref=config_ref,
+            rds_url=base_url,
+            connector=connector,
+            provider_name=provider_name,
+            fields_sent=fields_sent,
+            fields_overridden=fields_overridden,
+        )
+
+    server.tool(
+        name="test_connection",
+        title="Test Connection",
+        description=(
+            "Test a connector config's credentials against the Remote Design "
+            "Service (RDS). Resolves the config's ${...} placeholders against "
+            "config.yaml + env vars, then POSTs to "
+            "MULE_DX_RDS_URL/v1/test-connection. The same path ACB uses when "
+            "you click 'Test Connection' on a config in the canvas."
+        ),
+        annotations=ToolAnnotations(
+            readOnlyHint=True,
+            destructiveHint=False,
+            openWorldHint=True,
+        ),
+    )(test_connection)
+
     return server
+
+
+def _test_connection_result(
+    *,
+    success: bool,
+    message: str,
+    config_ref: str,
+    rds_url: str,
+    connector: str,
+    provider_name: str,
+    fields_sent: list[str],
+    fields_overridden: list[str],
+) -> CallToolResult:
+    """Pack the test-connection outcome into a CallToolResult.
+
+    The text content block carries a one-line summary the chat LLM reads;
+    structuredContent holds the full record the iframe consumes to update
+    the side panel.
+
+    No credential values are included anywhere — only field NAMES. This
+    keeps secrets from leaking into the chat transcript via the model
+    context, screenshots, or logs.
+    """
+    summary = (
+        f"{'✅' if success else '❌'} Test Connection [{config_ref}]: {message}"
+    )
+    return CallToolResult(
+        content=[TextContent(type="text", text=summary)],
+        structuredContent={
+            "success": success,
+            "message": message,
+            "configRef": config_ref,
+            "connector": connector,
+            "providerName": provider_name,
+            "rdsUrl": rds_url,
+            "fieldsSent": fields_sent,
+            "fieldsOverridden": fields_overridden,
+        },
+    )
 
 
 def main() -> None:
