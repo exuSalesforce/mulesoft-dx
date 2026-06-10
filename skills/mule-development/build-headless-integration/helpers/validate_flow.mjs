@@ -12,6 +12,11 @@
 //      flat errorTypes union (or starts with MULE: which is always available).
 //   4. Every config-ref="..." references a top-level config element by name.
 //   5. Every ${dotted.key} placeholder has a matching entry in config.yaml.
+//   6. Every attribute on a <prefix:elementName> appears in that element's parameter
+//      list in the digest. Catches Java-vs-Go connector attribute drift, e.g. the
+//      agent writing <salesforce:query salesforceQuery="..."> when the Go descriptor
+//      declared the attribute as `soql`. Universal attrs (name, config-ref, target,
+//      targetValue, doc:*, xmlns:*, xsi:*) are exempt.
 //
 // Exits 0 on success; non-zero on first violation found, with a clear message.
 //
@@ -61,8 +66,22 @@ if (existsSync(metaDir)) {
 
 // ---- collect facts from digests ----------------------------------------
 
-// prefix -> { namespace, schemaLocation, elementNames: Set, errorTypes: Set }
+// prefix -> {
+//   namespace, schemaLocation,
+//   elementNames: Set,
+//   errorTypes: Set,
+//   attrsByElement: Map<elementName, Set<paramName>>
+// }
 const byPrefix = new Map();
+const collectParamNames = (parameterGroups) => {
+  const names = new Set();
+  for (const grp of parameterGroups || []) {
+    for (const p of grp.parameters || []) {
+      if (p.name) names.add(p.name);
+    }
+  }
+  return names;
+};
 for (const d of digests) {
   const p = d.prefix;
   if (!p) continue;
@@ -73,20 +92,42 @@ for (const d of digests) {
       schemaLocation: d.schemaLocation,
       elementNames: new Set(d.dslElementNames || []),
       errorTypes: new Set(),
+      attrsByElement: new Map(),
     };
     byPrefix.set(p, bucket);
   }
+  const recordAttrs = (element, params) => {
+    if (!element || !params) return;
+    let set = bucket.attrsByElement.get(element);
+    if (!set) {
+      set = new Set();
+      bucket.attrsByElement.set(element, set);
+    }
+    for (const name of params) set.add(name);
+  };
   for (const cfg of d.configurations || []) {
     if (cfg.element) bucket.elementNames.add(cfg.element);
+    recordAttrs(cfg.element, collectParamNames(cfg.parameterGroups));
     for (const op of [...(cfg.operations || []), ...(cfg.sources || [])]) {
       if (op.element) bucket.elementNames.add(op.element);
       for (const e of op.errorTypes || []) bucket.errorTypes.add(e);
+      recordAttrs(op.element, collectParamNames(op.parameterGroups));
     }
     for (const prov of cfg.connectionProviders || []) {
       if (prov.element) bucket.elementNames.add(prov.element);
+      recordAttrs(prov.element, collectParamNames(prov.parameterGroups));
     }
   }
 }
+
+// Universal attributes — Mule core / dataweave / standard tooling always accepts
+// these on connector elements. Don't flag them even if a digest doesn't list them.
+const universalAttrs = new Set([
+  'name',
+  'config-ref',
+  'target',
+  'targetValue',
+]);
 
 // Well-known core/ee/http/doc element names (not exhaustive; just the common ones the
 // reference flows use). Anything else under these prefixes is allowed to pass — we don't
@@ -260,6 +301,37 @@ for (const flowPath of flowFiles) {
       if (!re.test(configYaml)) {
         errors.push(`${fileLabel}: \${${key}} not found as a key in config.yaml`);
       }
+    }
+  }
+
+  // Check 6: every attribute on <prefix:element> matches a parameter the digest
+  // declared for that element. Catches Java-vs-Go attribute-name drift.
+  // Match opening tags only: <prefix:element ...> or <prefix:element ... />.
+  // Skip closing tags </prefix:element>.
+  const openTagRe = /<([A-Za-z_][\w.\-]*):([A-Za-z_][\w.\-]*)((?:\s+[^<>]*?)?)\s*\/?>/g;
+  let otm;
+  while ((otm = openTagRe.exec(xml))) {
+    const prefix = otm[1];
+    const element = otm[2];
+    const attrBlob = otm[3] || '';
+    if (trustedPrefixes.has(prefix)) continue;
+    const bucket = byPrefix.get(prefix);
+    if (!bucket) continue;
+    const allowed = bucket.attrsByElement.get(element);
+    if (!allowed) continue; // unknown element (Check 2 already flagged it)
+    // If the digest declared zero attributes for this element, the digest doesn't
+    // model attrs for it (e.g. configurations have `parameterModels: null` for
+    // many connectors). Defer — false-negative is better than false-positive here.
+    if (allowed.size === 0) continue;
+    const attrRe = /\s([\w.\-:]+)\s*=\s*"[^"]*"/g;
+    let am;
+    while ((am = attrRe.exec(attrBlob))) {
+      const attr = am[1];
+      if (attr.startsWith('doc:') || attr.startsWith('xmlns:') || attr === 'xmlns' || attr.startsWith('xsi:')) continue;
+      if (universalAttrs.has(attr)) continue;
+      if (allowed.has(attr)) continue;
+      const hint = [...allowed].sort().slice(0, 6).join(', ');
+      errors.push(`${fileLabel}: <${prefix}:${element} ${attr}="..."> — "${attr}" not in digest for this element (declared: ${hint}${allowed.size > 6 ? ', ...' : ''})`);
     }
   }
 

@@ -25,7 +25,8 @@
 # bundleSource fetch_bundle.sh resolved during Phase 1, so first project-open is
 # disk-speed and renders even when RDS is down.
 #
-# Usage: create_versionless_project.sh <projectDir>
+# Usage: create_versionless_project.sh [--force] <projectDir>
+#   --force   overwrite an existing project at <projectDir> (otherwise exit 1)
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,10 +36,50 @@ SPEC_FILE="$TMP_DIR/design-spec.json"
 ACB_HOME="${ACB_HOME:-$HOME/AnypointCodeBuilder}"
 ACB_CACHE_DIR="$ACB_HOME/.cache/go"
 
-PROJECT_DIR="${1:-}"
+FORCE=0
+PROJECT_DIR=""
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    -*)
+      echo "create_versionless_project.sh: unknown flag '$arg'" >&2
+      echo "Usage: create_versionless_project.sh [--force] <projectDir>" >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "$PROJECT_DIR" ]]; then
+        echo "create_versionless_project.sh: multiple project dirs given ('$PROJECT_DIR' and '$arg')" >&2
+        exit 2
+      fi
+      PROJECT_DIR="$arg"
+      ;;
+  esac
+done
+
 if [[ -z "$PROJECT_DIR" ]]; then
-  echo "Usage: create_versionless_project.sh <projectDir>" >&2
+  echo "Usage: create_versionless_project.sh [--force] <projectDir>" >&2
   exit 2
+fi
+
+# Refuse to overwrite an existing project unless --force was passed. Re-running
+# the skill against the same directory used to silently clobber every emitted
+# file (.mule/project.json, project-manifest.json, pom.xml, mule-artifact.json,
+# config.yaml) — a real footgun when the agent is iterating on the design spec
+# and the user has hand-edited config.yaml between runs.
+if [[ -e "$PROJECT_DIR/.mule/project.json" && "$FORCE" -eq 0 ]]; then
+  cat >&2 <<EOF
+create_versionless_project.sh: project already exists at $PROJECT_DIR
+
+Found $PROJECT_DIR/.mule/project.json from a prior run. Re-running would
+overwrite the project's descriptor, manifest, pom.xml, mule-artifact.json, and
+config.yaml — including any hand-edits.
+
+To proceed, either:
+  - choose a different project directory, OR
+  - re-run with --force to overwrite:
+      create_versionless_project.sh --force "$PROJECT_DIR"
+EOF
+  exit 1
 fi
 
 if [[ ! -f "$SPEC_FILE" ]]; then

@@ -42,6 +42,15 @@ If the right path is ambiguous, ask the user once with `AskUserQuestion`: "Headl
 
 RDS is the single source of truth. `GET /v1/connectors` lists what's available; `GET /v1/connectors/{name}/descriptor` returns the three artifacts (`extension-model.json`, `dsl.json`, `extension.xsd`) atomically. The skill writes them through to `$ACB_HOME/.cache/go/<name>/` (default `$HOME/AnypointCodeBuilder`) — the same warm cache the ACB plugin's `ManifestRdsExtensionModelSource` reads on project-open. The skill ships no local connector bundles; a one-time `bash "$SKILL/scripts/seed_cache.sh" --from-rds` populates the cache so subsequent picks succeed even when RDS goes down later. Test-connection goes through `POST /v1/test-connection`, the wire contract enforced by `HttpRemoteDesignServiceClient.java` in the ACB plugin. The project the skill produces matches the shape that the upgrade-to-versionless flow writes when migrating an existing Maven project: `project-manifest.json` (sibling of `pom.xml`, name-only connector list) plus a stub `pom.xml` so today's `WorkspaceManagerImpl` can still open the project.
 
+### Project-file invariants
+
+These are not stylistic conventions — they're load-bearing for the platform's `WorkspaceManagerImpl` to open the project at all. `create_versionless_project.sh` writes them in the right shape; **never modify the script to omit one of these fields without confirming the platform supports it**:
+
+- **`.mule/project.json` MUST carry a `source` field** pointing at the stub `pom.xml` as a `file://` URI. `WorkspaceManagerImpl.initializeProjectFromExistingDescriptor` calls `Path.of(descriptor.getSource())` on its first line; a null `source` throws NPE, the workspace fails to initialize, and the canvas hangs at `MuleClient registration timed out after 60000ms`. This is the gating field — drop it and ACB silently dies on project-open.
+- **`pom.xml` MUST exist next to `.mule/`**, even though Go connectors aren't Maven artifacts. The same `WorkspaceManagerImpl` calls `Files.exists(root.resolve(POM_FILE))` and bails when it's missing. The stub the script emits has no connector dependencies; it's there to satisfy the file-existence check.
+- **`project-manifest.json` carries the connector list, name-only.** The plugin's `ManifestRdsExtensionModelSource.loadAll` reads this — not `.mule/project.json`. Don't try to put connectors in both files; the platform reads them from the manifest and the workspace descriptor must stay slim.
+- **`MULE_DX_RDS_MODE=dev` and `MULE_DX_RDS_URL=...` must be visible to ACB's process.** macOS GUI apps don't read `~/.zshrc`; the user must set them via `launchctl setenv` (or a `~/Library/LaunchAgents/*.plist` with `RunAtLoad=true`) for installed-mode ACB to inherit them. Without these, `RemoteDesignServiceClientFactory.create()` returns the prod stub and Go-connector test-connection silently returns "not available". The dev-mode VS Code window inherits `.zshrc`-set vars; installed-mode doesn't.
+
 ---
 
 ## Prerequisites
@@ -200,35 +209,101 @@ The full extension-model digest is cached at `tmp/connector-metadata/<nick>.json
 
 ## Step 3: Trigger Selection
 
-Decide the trigger using a short ladder. **Do not default to Scheduler** when the user gave no hint — Scheduler is the trigger that surprises users most (it implies background polling, which they didn't ask for). When in doubt, prefer HTTP Listener or ask.
+**[BLOCKER] Read every connector's `sources:` line before deciding.** Step 2's `phase1.sh` printed the combined digest for every picked connector; the `sources:` line is the authoritative list of native triggers each one supports. Scrolling past it and committing to Scheduler / HTTP Listener is the single highest-impact failure mode of this step — a connector source matched to user intent is always a better trigger than a generic poller or webhook.
 
-1. **Connector source** — does any picked connector expose a `<source>` operation that matches the trigger hint? (Read the "sources:" line of each digest.) If yes, use it.
-2. **Scheduler** — *only* when the user explicitly said "every N seconds/minutes", "poll", "on a schedule", "periodically", or similar timing language with no connector source available.
-3. **HTTP Listener** — for "on incoming HTTP" / "expose a webhook" / "trigger on demand". This is also the default when no trigger hint was given and no connector source matches.
-4. **Ask the user** — when an HTTP listener feels wrong for the integration's intent (e.g. the user described a long-running pipeline that doesn't naturally start from a request), use `AskUserQuestion` to choose between HTTP Listener and Scheduler before proceeding.
+If the digest's `sources:` arrays are not visible in the current tool output (e.g. they scrolled away), re-print them before deciding:
+
+```bash
+for f in "$WS_DIR"/tmp/connector-metadata/*-digest.json; do
+  echo "--- $(basename "$f") ---"
+  jq '{prefix, sources: [.configurations[].sources[]? | {name, element}]}' "$f"
+done
+```
+
+### Decision ladder (evaluate in order)
+
+Each rung is one of the possible paths — there is no "fallback". The first rung whose preconditions all match is the one you take.
+
+#### Rung 1 — Connector source path
+
+Take this path when **any** picked connector exposes a source whose name plausibly matches the user's trigger hint. Match heuristic: noun overlap (`product`, `order`, `charge`, `record`, `topic`) AND verb-prefix consistency (`on-new-*`, `on-modified-*`, `on-*-arrived`, `*-listener`, `*-trigger`, `replay-*`).
+
+Read the digest's per-source shape (the `parameterGroups` block in the source's entry under `configurations[].sources[]`). Two sub-cases:
+
+- **Polling source** — the source's parameters include scheduling fields (e.g. `frequency`, `startDelay`, `timeUnit`). The connector handles cadence natively. When the user named a cadence, the cadence goes into the source's parameters. **Do NOT add a separate top-level `<scheduler>`** — that double-clocks the flow.
+- **Event source** — no scheduling fields; fires on a real upstream event. Use directly.
+
+Commit inline when exactly one source's shape fits. Use `AskUserQuestion` when two or more sources both pass the shape check (the agent picking blindly between them is the wrong move).
+
+#### Rung 2 — Scheduler path
+
+Take this path when:
+
+- Rung 1 examined every `sources:` array and none matched the user's intent, AND
+- The user's prompt explicitly named a cadence ("every N seconds/minutes", "poll", "on a schedule", "periodically", "hourly", "daily"), AND
+- The flow body will call connector operations (not event-driven).
+
+Use `<scheduler>` with `<scheduling-strategy><fixed-frequency .../></scheduling-strategy>` (or `<cron .../>` for time-of-day cadences). **Record one-line reasons each connector source was rejected** in the Step 5 TDD — Phase 2 cannot start without that list when a Rung-1 source existed.
+
+#### Rung 3 — HTTP Listener path
+
+Take this path when:
+
+- The prompt explicitly says "expose endpoint", "receive HTTP", "webhook at /path", "REST API", "trigger on demand", AND
+- No connector source in scope is a webhook-style receiver.
+
+Use `<http:listener>` with the `http` connector loaded on RDS. **Default to this rung over Scheduler** when the prompt has no trigger hint and no connector source matched — Scheduler implies background polling the user didn't ask for, while HTTP Listener is inert until invoked.
+
+#### Rung 4 — Ask the user
+
+Take this path when none of Rungs 1–3 clearly apply — e.g. the prompt is outbound-only ("makes a request", "fetches", "retrieves") with no cadence, no endpoint language, and no source matched. Use `AskUserQuestion` with options derived from the actual `sources:` arrays of connectors in scope, plus Scheduler and HTTP Listener as fallbacks.
+
+### After the decision
+
+Record the selected trigger and — if the path is Rung 2 or Rung 3 and any in-scope connector has a `sources:` entry — the list of sources considered with one-line rejection reasons. Step 5's TDD surfaces this list; if it's missing, the TDD is incomplete and Phase 2 cannot start.
 
 ## Step 4: Connection Provider Selection
 
-For each picked connector with `requiresConnection: true`, pick a provider from the digest's "connection providers:" list. Default to the first one with the simplest required-fields set unless the user specifies (e.g. "OAuth", "JWT"). Record the choice in the design-spec JSON you'll commit at Step 6.
+For each picked connector whose digest shows `requiresConnection: true`, pick a provider from the digest's `connectionProviders` list under `configurations[]`.
+
+- **Exactly one provider** → state the choice inline ("Using `salesforce:basic` — only provider exposed by the connector"). Don't prompt.
+- **Multiple providers with materially different credentials** (e.g. `basic` vs `jwt` vs `saml`) → use `AskUserQuestion`. Show each provider's required fields so the user can pick by what they have credentials for, not by name.
+
+Record the choice as `(configName, providerName)` per connector. Step 5 surfaces it in the TDD; Step 6's `commit_design_spec.sh` reads it.
 
 ## Step 5: Technical Design Summary + Approval Gate
+
+**[BLOCKER] Present ONLY after Steps 1–4 are complete.** Every connector must have a digest under `tmp/connector-metadata/<nick>-digest.json`, every provider must be selected, and — when Step 3's rung was 2 or 3 — every Rung-1 source dismissal must be recorded. If any of those is missing, go back to the relevant step. Do not paper over with "TBD".
 
 Present prose summarizing:
 
 - **Project name** (slug derived from the user's intent, e.g. `demo-sf-poller`).
-- **User requirement** (one sentence).
-- **Trigger** (kind + parameters).
-- **Connectors picked** (each as `<bundle>` → `<prefix>:<config-element>`).
-- **Connection providers** (one per connector, with required fields the user must fill in).
-- **Project layout** that will be written: `.mule/project.json`, `project-manifest.json`, `mule-artifact.json`, stub `pom.xml`, `src/main/mule/<projectName>.xml`, `src/main/resources/config.yaml`. Connector descriptors are NOT copied into the project — they live in the warm cache at `$ACB_HOME/.cache/go/<name>/`.
+- **User requirement** (the user's prompt, verbatim or near-verbatim).
+- **Trigger** — kind + parameters. If the path was Rung 2 or Rung 3, also list every `sources:` entry that was considered with one-line dismissal reasons.
+- **Connectors picked** — each as `<bundle>` → `<prefix>:<config-element>` with the connector's namespace + schemaLocation from `tmp/connector-choices/<nick>.json`.
+- **Connection providers** — one per connector, with the required fields the user must fill into `config.yaml` after Phase 2.
+- **Project layout** — `.mule/project.json`, `project-manifest.json`, `mule-artifact.json`, stub `pom.xml`, `src/main/mule/<projectName>.xml`, `src/main/resources/config.yaml`. Connector descriptors are NOT copied into the project; they live in `$ACB_HOME/.cache/go/<name>/` (pre-warmed by `create_versionless_project.sh`).
 
-Then ask: **"Proceed to build?"** Wait for an explicit affirmative before Step 6.
+Then ask via `AskUserQuestion`:
+
+```
+"Please review the technical design above. Proceed to build?"
+  - "Yes, proceed to build."
+  - "No, I want to change the plan."
+  - "No, cancel generation."
+```
+
+**[BLOCKER] WAIT for explicit "Yes, proceed to build." before Step 6.** On "No, I want to change the plan.", ask which part (trigger, connectors, providers) and loop back to the relevant step. On "No, cancel generation.", stop the workflow politely.
+
+Why this gate matters: Phase 1 is the last chance to catch a wrong trigger, a wrong connector, or a missing clarifying question. Once Phase 2 begins the project skeleton is on disk and rewinding it costs everyone time. Treat "No, I want to change the plan." as a first-class outcome, not an exception.
 
 ---
 
 # Phase 2: Build
 
 ## Step 6: Commit + Materialize
+
+**[BLOCKER] Step 5's "Yes, proceed to build." must have been received before this step runs.** Phase 2 writes to disk and pre-warms `$ACB_HOME/.cache/go/<name>/`; rewinding either is more expensive than completing Phase 1 properly.
 
 The agent assembles the design spec JSON, pipes it to `commit_design_spec.sh`, then calls `create_versionless_project.sh`, then writes the flow XML.
 
@@ -238,6 +313,16 @@ bash "$SKILL/scripts/create_versionless_project.sh" "$WS_DIR/<projectName>"
 ```
 
 The project directory must be a sibling of `tmp/` under `$WS_DIR` (default `$HOME/Salesforce/projects/headless`). The agent passes the absolute path explicitly.
+
+**Existing-project guard.** `create_versionless_project.sh` refuses to run when `<projectDir>/.mule/project.json` already exists — re-running on a project the user has hand-edited would silently overwrite their changes. Two ways to proceed:
+
+- The user wants a fresh emit and is OK losing their hand-edits → re-run with `--force`:
+  ```bash
+  bash "$SKILL/scripts/create_versionless_project.sh" --force "$WS_DIR/<projectName>"
+  ```
+- The user is iterating on the design and wants both versions on disk → emit to a new directory (different `<projectName>`).
+
+Don't pass `--force` silently. If the user didn't ask for it, surface the conflict and ask via `AskUserQuestion`.
 
 Design spec shape (passed on stdin to `commit_design_spec.sh`):
 
@@ -271,19 +356,22 @@ Quick checklist for the XML the agent writes:
 
 ## Step 6.5: Validate the flow XML
 
+**[BLOCKER] Run the validator before Step 7.** The validator runs offline against the digest cache; running it costs nothing and catches typos that ACB would only surface at canvas-render time. Treat a non-zero exit as "fix the XML, re-run", not "good enough".
+
 ```bash
 bash "$SKILL/scripts/validate_generated_flow_xml.sh" "$WS_DIR/<projectName>"
 ```
 
-Catches the failure modes the old `validate_before_build.sh` used to catch at `mvn package` time:
+Six checks, in order:
 
-- `xmlns:foo="..."` declared without a matching `xsi:schemaLocation` pair
-- `<foo:notARealElement>` not in any digest's known element set
-- `<on-error-propagate type="FOO:NEVER_EXISTED">` — error type not in any connector's flat error list
-- `config-ref="ghost"` with no top-level `name="ghost"` element
-- `${dotted.key}` placeholder with no matching key in `config.yaml`
+1. `xmlns:foo="..."` declared without a matching `xsi:schemaLocation` pair.
+2. `<foo:notARealElement>` not in any digest's `dslElementNames` set.
+3. `<on-error-propagate type="FOO:NEVER_EXISTED">` — error type not in any connector's flat error list.
+4. `config-ref="ghost"` with no top-level `name="ghost"` element.
+5. `${dotted.key}` placeholder with no matching key in `config.yaml`.
+6. **Per-element attribute coverage.** Every attribute on `<prefix:elementName>` must appear in that element's `parameterGroups[].parameters[].name` set in the digest. Catches Java-vs-Go connector attribute drift, e.g. writing `<salesforce:query salesforceQuery="...">` when the Go descriptor declared `soql`. Universal attrs (`name`, `config-ref`, `target`, `targetValue`, `doc:*`, `xmlns:*`, `xsi:*`) are exempt.
 
-If validation fails, fix the XML and re-run before Step 7. The generator runs offline so this is the catch-net for typos and digest drift.
+Check 6 defers when the digest declared zero parameters for an element (some configurations have `parameterModels: null`); a cleaner false-negative is preferred to a flaky false-positive there.
 
 ## Step 7: Render the flow inline
 
@@ -293,7 +381,15 @@ The skill ships a companion MCP server at [`mcp/`](mcp/README.md) that renders t
 render_mule_flow(project_dir="$WS_DIR/<projectName>")
 ```
 
-The tool reads `<project_dir>/src/main/mule/<name>.xml`, parses it into a `{nodes, edges}` graph (one node per top-level processor; containers like `<choice>`/`<try>` collapse to one summary node), and returns a UI resource Claude Desktop iframes inline. Click any node in the canvas to see its XML attributes in a side panel. The canvas is read-only — flow edits go through the chat (the agent regenerates the project).
+The tool reads `<project_dir>/src/main/mule/<name>.xml`, parses it into a `{nodes, edges}` graph, and returns a UI resource Claude Desktop iframes inline. Click any node in the canvas to see its XML attributes in a side panel. The canvas is read-only — flow edits go through the chat (the agent regenerates the project).
+
+**v1 limitations — call these out to the user up front so the canvas doesn't surprise them.** The MCP renderer is a flat-tree visualiser; nested control-flow structure is collapsed:
+
+- **Containers (`<choice>`, `<try>`, `<scatter-gather>`, `<foreach>`, `<until-successful>`, `<parallel-foreach>`)** render as a single summary node — the children inside them are NOT shown as separate nodes in the canvas. The `<error-handler>` block at the end of a flow is similarly collapsed.
+- **Per-connector icons** are not rendered; nodes show generic kind badges instead.
+- **Edit-from-canvas** is not supported. Any flow change goes through the chat — the agent edits the XML and the next `render_mule_flow` call picks up the change.
+
+If the user needs to see the full nested structure (the children inside `<choice>`'s `<when>` / `<otherwise>`, or the `<try>`'s body separated from its `<error-handler>`), tell them to open the project in ACB. Same XML, same connector icons, full nested layout — the canvas there is the authoritative one. The MCP renderer is the inline-in-chat fallback, not a replacement for ACB.
 
 **The renderer has no RDS dependency.** It reads only the project's flow XML and bundled connector icons; once the project is on disk, the canvas works whether RDS is up or down.
 
@@ -334,10 +430,112 @@ bash "$SKILL/scripts/start_real_rds.sh" down
 
 ---
 
-# Failure modes the skill exists to prevent
+## Best Practices
 
-- **Reaching for anypoint-cli-v4.** This is the wrong skill if you're tempted. Switch to `build-mule-integration`.
-- **Inventing a connector name.** Only connectors RDS has loaded exist. `bash "$SKILL/scripts/list_rds_connectors.sh"` prints the live catalog. If `search_connectors.sh` finds none, stop.
-- **Inventing operation names or parameter names.** They live in the digest. If a parameter isn't in the digest, it's not a parameter of that operation.
-- **Skipping the approval gate.** Step 5 is non-optional. Phase 2 can be irreversible (overwrites the project dir if it exists).
-- **Proceeding without RDS.** Step 1 hard-fails if RDS isn't reachable. There is no stub fallback. If `validate_prerequisites.sh` exits non-zero, surface the error to the user and stop — do not invent connector data or skip ahead.
+**1. RDS is the only source of connector truth.** No stub fallback. No invention.
+
+- ✅ `tmp/connector-metadata/<nick>.json` exists on disk → that nick is real.
+- ✅ The digest's `dslElementNames`, `parameterGroups[].parameters[].name`, and `errorTypes` are the only attribute / element / error-type identifiers allowed in the flow XML.
+- ❌ Pasting an attribute name from `build-mule-integration` patterns (Java connector) into a Go-connector flow. They differ — the Go `salesforce` connector declares `soql`; the Java connector's `salesforce-query` child element lives there. Check 6 of `validate_generated_flow_xml.sh` catches this mechanically; respect it.
+- ❌ Inventing a connector name when `list_rds_connectors.sh` doesn't list it. The Go connector module isn't loaded — STOP, don't fall back to HTTP, don't pick a different connector. Tell the user.
+
+**2. The agent writes the flow XML directly.** No bash call to an LLM. Read the digest, write the file.
+
+- The digest has element names, attribute names, required-flags, and error types. That's the authoritative spec.
+- Use the prefix and namespace recorded in `tmp/connector-choices/<nick>.json` — same pair the canvas will use to look up the descriptor.
+- Validate before declaring done. `validate_generated_flow_xml.sh` runs offline; running it costs nothing and catches typos that ACB would only surface on render.
+
+**3. Reaching for anypoint-cli-v4 means you're on the wrong skill.** Switch to `build-mule-integration`. This skill produces no `pom.xml` dependencies, no Maven build, no MTF — the stub `pom.xml` exists only because today's `WorkspaceManagerImpl` requires the file to exist.
+
+**4. Phase 2 is destructive — never silently re-run it on an existing project.** `create_versionless_project.sh` refuses to overwrite an existing `.mule/project.json`. If the user wants a clean re-emit, pass `--force` explicitly; otherwise pick a new project directory or surface the conflict to the user.
+
+**5. Don't trust the dev-mode env to match installed-mode env.** When the user reports the canvas works in dev mode but not in installed-mode ACB, the most common cause is that `MULE_DX_RDS_MODE` and `MULE_DX_RDS_URL` are exported in `.zshrc` (which dev-mode VS Code inherits) but not in the launchd `gui/<uid>` domain (which dock-launched ACB inherits). See "Project-file invariants" in the Architecture section.
+
+---
+
+## Common Headless Integration Patterns
+
+**#1 HTTP listener → Go-connector operation → response.** `<http:listener>` → `<salesforce:query>` → `<ee:transform>` → response. Use when the user wants a webhook-driven sync. HTTP listener is the right default when the prompt has no cadence and no native source matches.
+
+**#2 Scheduler → Go-connector query → transform → downstream.** `<scheduler>` with `<fixed-frequency>` → `<salesforce:query>` → `<ee:transform>` → `<twilio:send-sms>`. Use only when the user explicitly named a cadence ("every N seconds", "poll", "on a schedule"). Don't default to Scheduler — it implies background polling the user didn't ask for.
+
+**#3 Native event source → transform → downstream.** `<salesforce:replay-topic-listener>` → `<ee:transform>` → target operation. Use when the picked connector exposes a `source` (visible as a `sources:` line in the digest) that matches the trigger hint. Always preferred over Scheduler when a real event source exists.
+
+**#4 Multi-target fan-out via `<flow-ref>`.** Trigger → `<flow-ref name="enrich"/>` → `<scatter-gather>` → multiple connectors. Use when the user says "send to X and Y" — separate top-level flows let each leg fail independently.
+
+For all four patterns, the canvas labels rendered in ACB and in the MCP renderer (Step 7) come from `doc:name` and `doc:description` attributes — every meaningful element gets both.
+
+---
+
+## Troubleshooting
+
+**`MuleClient registration timed out after 60000ms` on project open.** Almost always a `.mule/project.json` defect. Check that `source` is populated (`file:///.../pom.xml`); that file is the gating field for `WorkspaceManagerImpl.initializeProjectFromExistingDescriptor`. See "Project-file invariants" above.
+
+**`spawn ENOENT` for the bundled JDK in ACB logs.** Usually a symptom, not a cause. Look at `~/AnypointCodeBuilder/logs/ACBLog-YYYY-MM-DD.log` for the real exception — the JDK error is the auto-restart racing against shutdown.
+
+**Test Connection returns "not available" / empty.** Either RDS isn't running (run `bash "$SKILL/scripts/ensure_rds.sh"` to bring it up) or `MULE_DX_RDS_MODE` / `MULE_DX_RDS_URL` aren't visible to ACB (`launchctl getenv MULE_DX_RDS_MODE` should print `dev`). If installed-mode ACB still doesn't see them, the launchd plist needs to be reloaded: `launchctl bootout gui/$(id -u)/<plist-id>; launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<plist>`.
+
+**Docker not running → RDS can't auto-bring-up.** Tell the user to start Docker Desktop. `start_real_rds.sh` preflights this and reports clearly.
+
+**`go-runtime` checkout missing.** Override with `GO_RUNTIME=/path/to/go-runtime` in the environment and rerun the failing script. Default location is `$HOME/Salesforce/workspace/go-runtime`.
+
+**Connector name not loaded on RDS.** `phase1.sh` fails with `404 — connector '<name>' not loaded on RDS`. Run `list_rds_connectors.sh` to see what's available. If the connector the user wants isn't there, tell them — don't silently switch to a different one.
+
+**Port 8090 occupied.** Override with `MULE_DX_RDS_URL=http://localhost:<other>:` and rerun.
+
+**MCP `render_mule_flow` tool not available.** Claude Desktop hasn't been told about the server yet. Run `bash "$SKILL/scripts/install_mcp_server.sh"` once and then quit + relaunch Claude Desktop.
+
+**Validator Check 6 false-positive.** If the validator reports an attribute isn't in the digest but the digest is current, it's likely a digest-shape bug. Re-run `phase1.sh` to refresh `tmp/connector-metadata/<nick>-digest.json`. The check defers (passes) when the digest declared zero attributes for an element, so config-level elements with `parameterModels: null` don't false-flag.
+
+---
+
+## Quick Reference
+
+`$SKILL` is the absolute path to this skill's directory. Record it once at session start and use it consistently — never `bash scripts/...` from a relative cwd.
+
+```bash
+# Phase 1 — single-chip orchestrator (validate + ensure RDS + pick + describe per nick)
+bash "$SKILL/scripts/phase1.sh" <nick1>:<connector1> [<nick2>:<connector2> ...]
+
+# Optional helpers (ad-hoc; not invoked by phase1.sh)
+bash "$SKILL/scripts/list_rds_connectors.sh"               # what's loaded on RDS right now
+bash "$SKILL/scripts/search_connectors.sh" <term>          # filter the live catalog
+bash "$SKILL/scripts/seed_cache.sh" --from-rds             # one-time pre-warm $ACB_HOME/.cache/go/
+
+# Phase 2 — commit, materialize, validate
+echo '<design-spec-json>' | bash "$SKILL/scripts/commit_design_spec.sh"
+bash "$SKILL/scripts/create_versionless_project.sh" "$WS_DIR/<projectName>"
+# Add --force to overwrite an existing project at that path:
+bash "$SKILL/scripts/create_versionless_project.sh" --force "$WS_DIR/<projectName>"
+# Then write src/main/mule/<projectName>.xml from the digest, then validate:
+bash "$SKILL/scripts/validate_generated_flow_xml.sh" "$WS_DIR/<projectName>"
+
+# Step 7 — render the canvas inline (Claude Desktop chat tab only)
+# In the chat: render_mule_flow(project_dir="$WS_DIR/<projectName>")
+# First-time install (idempotent):
+bash "$SKILL/scripts/install_mcp_server.sh"
+
+# RDS lifecycle
+bash "$SKILL/scripts/ensure_rds.sh"                        # idempotent — bring up if not reachable
+bash "$SKILL/scripts/start_real_rds.sh" --rebuild          # force WASM rebuild
+bash "$SKILL/scripts/start_real_rds.sh" down               # stop the stack
+```
+
+| File | Purpose |
+| --- | --- |
+| `tmp/headless-env.json` | env probes (Node version, ACB presence) |
+| `tmp/rds.json` | RDS endpoint + lifecycle state |
+| `tmp/connector-choices/<nick>.json` | picked Go connector — prefix, namespace, schemaLocation, bundleSource |
+| `tmp/connector-metadata/<nick>-digest.json` | rich digest used by the agent + validator |
+| `tmp/connector-metadata/<nick>.json` | flat reference (operations / sources / configs / errorTypes) |
+| `tmp/connector-metadata/<nick>-config.json` | per-config + connection-provider details |
+| `tmp/connector-metadata/<nick>-<op>.json` | per-operation deep metadata |
+| `tmp/connector-errors/<nick>.json` | connector-wide error-type whitelist |
+| `tmp/design-spec.json` | committed design spec (Phase 2 input) |
+| `<projectDir>/.mule/project.json` | workspace descriptor — `source` field gates `WorkspaceManagerImpl` |
+| `<projectDir>/project-manifest.json` | name-only connector list |
+| `<projectDir>/pom.xml` | stub; required until `WorkspaceManagerImpl` supports no-pom |
+| `<projectDir>/mule-artifact.json` | runtime metadata |
+| `<projectDir>/src/main/mule/<projectName>.xml` | flow XML (the agent writes this) |
+| `<projectDir>/src/main/resources/config.yaml` | dot-keyed credentials placeholders |
+| `$ACB_HOME/.cache/go/<name>/` | warm cache the ACB plugin reads on project-open |
