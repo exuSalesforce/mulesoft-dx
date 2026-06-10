@@ -2193,7 +2193,7 @@ describe('jp1 region support', () => {
             <div id="serverRegionRow" style="display:none">
                 <select id="regionPreset">
                     <option id="regionDefaultOption" value="eu1">Europe (eu1)</option>
-                    <option id="regionJp1Option" value="jp1">Japan (jp1)</option>
+                    <option id="regionJp1Option" value="jp1" hidden>Japan (jp1)</option>
                     <option value="custom">Custom</option>
                 </select>
                 <input type="text" id="regionCustomInput" style="display:none">
@@ -2204,6 +2204,12 @@ describe('jp1 region support', () => {
     afterEach(() => {
         document.body.innerHTML = '';
         sessionStorage.clear();
+    });
+
+    test('jp1 option is hidden by default before any server is selected', () => {
+        setUpAuthPanel();
+        const jp1Opt = document.getElementById('regionJp1Option');
+        expect(jp1Opt.hidden).toBe(true);
     });
 
     test('jp1 option is hidden when serverType is eu', () => {

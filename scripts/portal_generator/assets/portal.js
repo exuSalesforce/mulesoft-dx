@@ -3673,6 +3673,69 @@ function getNonRegionVars(server) {
  * - region/REGION_ID: uses the auth panel selection
  * - other vars: uses values from the operation's server-var inputs, or defaults
  */
+// Expand a server entry into one entry per known region (for dropdown listing).
+// If the entry has no {region} placeholder, return it as-is.
+// If `region.enum` is declared on the spec, use that. Otherwise fall back to
+// REGIONS_BY_HOST based on the URL's hostname family.
+function expandServerEntries(servers) {
+    var out = [];
+    servers.forEach(function(server) {
+        if (!server || !server.url || server.url.indexOf('{region}') === -1) {
+            out.push({ server: server, regionOverride: null });
+            return;
+        }
+        var regionVar = (server.variables && server.variables.region) || {};
+        var regions = Array.isArray(regionVar.enum) && regionVar.enum.length
+            ? regionVar.enum.slice()
+            : (server.url.indexOf('platform.mulesoft.com') !== -1
+                ? REGIONS_BY_HOST.platform
+                : REGIONS_BY_HOST.anypoint);
+        regions.forEach(function(r) {
+            out.push({ server: server, regionOverride: r });
+        });
+    });
+    return out;
+}
+
+function resolveServerUrlWithRegion(server, opId, regionOverride) {
+    if (!server) return 'https://anypoint.mulesoft.com';
+    var url = server.url;
+    var vars = server.variables || {};
+    for (var vname in vars) {
+        var placeholder = '{' + vname + '}';
+        if (url.indexOf(placeholder) === -1) continue;
+        var value;
+        if (vname === 'region' || vname === 'REGION_ID') {
+            value = regionOverride || vars[vname].default || '';
+        } else {
+            value = vars[vname].default || '';
+            if (opId) {
+                var input = document.querySelector('#server-vars-' + opId + ' [data-server-var="' + vname + '"]');
+                if (input && input.value.trim()) value = input.value.trim();
+            }
+        }
+        url = url.replace(placeholder, value);
+    }
+    return url;
+}
+
+function resolveServerUrlWithDefaults(server, opId) {
+    if (!server) return 'https://anypoint.mulesoft.com';
+    var url = server.url;
+    var vars = server.variables || {};
+    for (var vname in vars) {
+        var placeholder = '{' + vname + '}';
+        if (url.indexOf(placeholder) === -1) continue;
+        var value = vars[vname].default || '';
+        if (opId && vname !== 'region' && vname !== 'REGION_ID') {
+            var input = document.querySelector('#server-vars-' + opId + ' [data-server-var="' + vname + '"]');
+            if (input && input.value.trim()) value = input.value.trim();
+        }
+        url = url.replace(placeholder, value);
+    }
+    return url;
+}
+
 function resolveServerUrl(server, opId) {
     if (!server) return 'https://anypoint.mulesoft.com';
     var url = server.url;
@@ -3766,6 +3829,15 @@ function onRegionPresetChange() {
  */
 var _serverSelections = {};
 
+// Single source of truth for which regions exist on each Anypoint hostname family.
+// To add a new region, append it to the right list — no spec changes required.
+// When OAS specs eventually declare `enum` on `servers[].variables.region`, prefer
+// that as the source of truth (see expandServerEntries).
+var REGIONS_BY_HOST = {
+    anypoint: ['eu1'],
+    platform: ['ca1', 'jp1']
+};
+
 /**
  * Return the index of the preferred server based on region selection.
  */
@@ -3819,43 +3891,15 @@ function initServerCombos() {
 
 function buildUrlBar(bar, opId, path, servers) {
     bar.innerHTML = '';
-
-    var idx = getActiveServerIndex(opId, servers);
+    // The URL bar always reflects the server/region selected in the auth modal —
+    // no per-operation override. To switch region, the user re-selects in the
+    // modal (and re-logs-in if needed); the URL bar updates automatically.
+    var idx = getPreferredServerIndex(servers);
     var resolvedUrl = resolveServerUrl(servers[idx], opId);
-    var fullUrl = resolvedUrl + path;
-
-    if (servers.length > 1) {
-        // Create combobox-style container
-        var combobox = document.createElement('div');
-        combobox.className = 'url-combobox';
-        combobox.title = 'Click to change server';
-
-        // URL text
-        var urlText = document.createElement('span');
-        urlText.className = 'url-combobox-text';
-        urlText.textContent = fullUrl;
-
-        // Chevron icon
-        var chevron = document.createElement('span');
-        chevron.className = 'url-combobox-chevron';
-        chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
-        combobox.appendChild(urlText);
-        combobox.appendChild(chevron);
-
-        combobox.addEventListener('click', function(e) {
-            e.stopPropagation();
-            toggleServerDropdown(bar, opId, servers);
-        });
-
-        bar.appendChild(combobox);
-    } else {
-        // Single server - just show URL as plain text
-        var urlText = document.createElement('span');
-        urlText.className = 'url-text-plain';
-        urlText.textContent = fullUrl;
-        bar.appendChild(urlText);
-    }
+    var urlText = document.createElement('span');
+    urlText.className = 'url-text-plain';
+    urlText.textContent = resolvedUrl + path;
+    bar.appendChild(urlText);
 }
 
 function toggleServerDropdown(bar, opId, servers) {
@@ -3876,11 +3920,14 @@ function toggleServerDropdown(bar, opId, servers) {
     dropdown.style.left = rect.left + 'px';
 
     var activeIdx = getActiveServerIndex(opId, servers);
+    // Expand each {region} server entry into one row per known region for that host.
+    var expanded = expandServerEntries(servers);
 
-    servers.forEach(function(server, idx) {
+    expanded.forEach(function(entry) {
+        var idx = servers.indexOf(entry.server);
         var btn = document.createElement('button');
         btn.className = 'server-dropdown-option' + (idx === activeIdx ? ' selected' : '');
-        btn.textContent = resolveServerUrl(server, opId);
+        btn.textContent = resolveServerUrlWithRegion(entry.server, opId, entry.regionOverride);
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             _serverSelections[opId] = idx;

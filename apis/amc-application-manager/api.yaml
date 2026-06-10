@@ -18,7 +18,6 @@ servers:
     region:
       default: ca1
       description: Region identifier for the service endpoint.
-      enum: [ca1, jp1]
 tags:
 - name: Schedulers
   description: Manage RTF and Cloudhub 2.0 schedulers.
