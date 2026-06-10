@@ -75,6 +75,20 @@ step "Step 1: validate prerequisites + ensure RDS"
 echo "  prereqs OK ($(jq -r .node_version "$TMP_DIR/headless-env.json"))"
 echo "  rds: $(jq -r .url "$TMP_DIR/rds.json") (backend=$(jq -r .backend "$TMP_DIR/rds.json"))"
 
+# ---- Clean stale per-nick artifacts ----------------------------------------
+#
+# tmp/ persists across runs by design (it's a scratchpad the agent reads
+# back). But per-nick files left over from a prior run with different
+# nicks pollute downstream steps — most visibly create_versionless_project's
+# config.yaml emit, which used to glob *-digest.json and ended up writing
+# the same connector block twice. Wipe just the per-nick directories;
+# preserve env/RDS state since that's still valid.
+rm -rf \
+  "$TMP_DIR/connector-choices" \
+  "$TMP_DIR/connector-metadata" \
+  "$TMP_DIR/connector-errors" \
+  "$TMP_DIR/design-spec.json"
+
 # ---- Step 4: pick each connector -------------------------------------------
 
 step "Step 4: pick connectors"

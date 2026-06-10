@@ -162,7 +162,7 @@ The "code" tab (Claude Code CLI) and "workflow" tab (Cowork) cannot render the c
 **[BLOCKER]** Do not prompt the user here. Produce prose only:
 
 1. **Systems list** — exact connector names (e.g. `salesforce`, not "CRM"). If unsure of the exact name, you can confirm against the live RDS catalog by running `bash "$SKILL/scripts/list_rds_connectors.sh"` (optional; Step 2 catches unknown connectors anyway).
-2. **Trigger hint** — verbatim phrase from the user ("every 60 seconds", "on incoming HTTP", "when a record is created"). Do not commit to a trigger choice; that's Step 4.
+2. **Trigger hint** — verbatim phrase from the user ("every 60 seconds", "on incoming HTTP", "when a record is created"). Do not commit to a trigger choice; that's Step 3. **Do not pre-announce a guess** ("most likely a Scheduler…") — that pre-commits the design before the user has a chance to react. If no hint was given, just say "no trigger hint given; will pick in Step 3".
 
 ## Step 2: Phase 1 — bring up RDS, pick + describe all connectors (one bash call)
 
@@ -200,12 +200,12 @@ The full extension-model digest is cached at `tmp/connector-metadata/<nick>.json
 
 ## Step 3: Trigger Selection
 
-Decide the trigger using a short ladder:
+Decide the trigger using a short ladder. **Do not default to Scheduler** when the user gave no hint — Scheduler is the trigger that surprises users most (it implies background polling, which they didn't ask for). When in doubt, prefer HTTP Listener or ask.
 
 1. **Connector source** — does any picked connector expose a `<source>` operation that matches the trigger hint? (Read the "sources:" line of each digest.) If yes, use it.
-2. **Scheduler** — for "every N seconds/minutes" hints with no connector source.
-3. **HTTP Listener** — for "on incoming HTTP" / "expose a webhook".
-4. **Ask the user** — if none of the above clearly fits.
+2. **Scheduler** — *only* when the user explicitly said "every N seconds/minutes", "poll", "on a schedule", "periodically", or similar timing language with no connector source available.
+3. **HTTP Listener** — for "on incoming HTTP" / "expose a webhook" / "trigger on demand". This is also the default when no trigger hint was given and no connector source matches.
+4. **Ask the user** — when an HTTP listener feels wrong for the integration's intent (e.g. the user described a long-running pipeline that doesn't naturally start from a request), use `AskUserQuestion` to choose between HTTP Listener and Scheduler before proceeding.
 
 ## Step 4: Connection Provider Selection
 

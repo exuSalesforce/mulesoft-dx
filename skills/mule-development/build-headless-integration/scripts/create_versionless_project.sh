@@ -58,18 +58,30 @@ mkdir -p "$PROJECT_DIR/.mule" \
 
 # 1) .mule/project.json — workspace descriptor. No connector list here; that
 # moves to project-manifest.json (the format the upgrade-to-versionless flow writes).
+#
+# `source` MUST be a file:// URI pointing at the stub pom.xml. The platform's
+# WorkspaceManagerImpl.initializeProjectFromExistingDescriptor calls
+#   Path.of(descriptor.getSource())
+# on the very first line — if `source` is missing, Path.of throws NPE on a null
+# URI, the workspace fails to initialize, and the canvas hangs at "MuleClient
+# registration timed out after 60000ms". Until the platform learns the manifest
+# path, we feed it the pom.xml URI it expects.
 DEPS_JSON="$(jq '.dependencies // []' "$SPEC_FILE")"
+PROJECT_DIR_ABS="$(cd "$PROJECT_DIR" && pwd)"
+SOURCE_URI="file://$PROJECT_DIR_ABS/pom.xml"
 
 jq -n \
   --arg name "$PROJECT_NAME" \
   --arg version "$PROJECT_VERSION" \
   --arg muleVersion "$MULE_VERSION" \
   --arg javaVersion "$JAVA_VERSION" \
+  --arg source "$SOURCE_URI" \
   --argjson deps "$DEPS_JSON" \
   '{
     modelVersion: "1.1.0",
     name: $name,
     version: $version,
+    source: $source,
     natures: ["mule"],
     components: [],
     muleVersion: $muleVersion,
@@ -178,17 +190,23 @@ TRIGGER_KIND="$(jq -r '.trigger.kind // "scheduler"' "$SPEC_FILE")"
     echo
   fi
 
-  # Connection-provider blocks (one per .connections[] entry).
-  # Reads the rich digest at tmp/connector-metadata/<nick>-digest.json — the flat
-  # <nick>.json file emitted alongside doesn't carry parameter detail.
-  # Two-pass jq: pass 1 produces plain rows {scope, env, key, default, allowed, description},
-  # pass 2 formats the YAML so we don't have to fight bash/jq quoting around `, `.
-  for digest in "$TMP_DIR/connector-metadata"/*-digest.json; do
-    [[ -f "$digest" ]] || continue
-    jq -r --slurpfile spec "$SPEC_FILE" '
+  # Connection-provider blocks (one per .connections[] entry in the design spec).
+  # Drive the iteration off the spec — NOT a glob over tmp/connector-metadata/ —
+  # so stale digest files left over from a previous run with different nicks
+  # can't slip a duplicate block into the output. (Bug we hit when a prior
+  # run used `salesforce` as the nick and a newer run used `sfdc`: the
+  # globbed loop picked up both digests and emitted the salesforce block
+  # twice.)
+  jq -r '.connections[].nick' "$SPEC_FILE" | while read -r nick; do
+    digest="$TMP_DIR/connector-metadata/$nick-digest.json"
+    if [[ ! -f "$digest" ]]; then
+      echo "create_versionless_project.sh: missing digest for nick '$nick' at $digest" >&2
+      exit 1
+    fi
+    jq -r --slurpfile spec "$SPEC_FILE" --arg nick "$nick" '
       [
-        $spec[0].connections[] as $c
-        | ($spec[0].picks[] | select(.nick == $c.nick)) as $pick
+        ($spec[0].connections[] | select(.nick == $nick)) as $c
+        | ($spec[0].picks[] | select(.nick == $nick)) as $pick
         | (.configurations[0].connectionProviders[] | select(.name == $c.providerName)) as $prov
         | $prov.parameterGroups[].parameters[]
         | select(.required)
@@ -198,19 +216,19 @@ TRIGGER_KIND="$(jq -r '.trigger.kind // "scheduler"' "$SPEC_FILE")"
            allowedValues: (if .allowedValues then (.allowedValues | join(", ")) else "" end),
            description: (.description // "")}
       ]
-      | group_by(.nick)
-      | .[]
       | (.[0]) as $h
-      | "# \($h.prefix) (\($h.providerName) auth)",
-        "\($h.nick):",
-        "  \($h.providerName):",
-        (.[]
-          | (([$h.nick, $h.providerName, .name] | map(ascii_upcase | gsub("[^A-Z0-9]"; "_")) | join("_"))) as $env
-          | (if .description != "" then "    # \(.description)" else empty end),
-            (if .allowedValues != "" then "    # allowed: \(.allowedValues)" else empty end),
-            (if .defaultValue != "" then "    # default: \(.defaultValue)" else empty end),
-            "    \(.name): \"${\($env)}\""),
-        ""
+      | (if $h then
+          "# \($h.prefix) (\($h.providerName) auth)",
+          "\($h.nick):",
+          "  \($h.providerName):",
+          (.[]
+            | (([$h.nick, $h.providerName, .name] | map(ascii_upcase | gsub("[^A-Z0-9]"; "_")) | join("_"))) as $env
+            | (if .description != "" then "    # \(.description)" else empty end),
+              (if .allowedValues != "" then "    # allowed: \(.allowedValues)" else empty end),
+              (if .defaultValue != "" then "    # default: \(.defaultValue)" else empty end),
+              "    \(.name): \"${\($env)}\""),
+          ""
+        else empty end)
     ' "$digest" 2>/dev/null
   done
 } >"$PROJECT_DIR/src/main/resources/config.yaml"
