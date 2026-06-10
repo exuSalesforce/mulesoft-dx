@@ -25,56 +25,71 @@ The canvas is read-only in v1 — edits go through the chat.
 
 ## Prerequisites
 
-- Python 3.11 or later (`/opt/homebrew/bin/python3.12` works on macOS).
+- Python 3.11 or later (`brew install python@3.12` on macOS).
 - The `build-headless-integration` skill (this directory's parent) — the MCP
   server reads project layout the skill produces.
 - Claude Desktop with MCP support enabled.
 
-The MCP server itself has no Docker dependency (the skill's `ensure_rds.sh`
-handles that for the parent skill — the canvas just reads files on disk).
+**No RDS, no Docker, no network.** The renderer reads only the project's
+flow XML from disk and the bundled connector icons. Once a project exists
+on disk, the canvas works whether RDS is up or down. RDS is only needed
+during _generation_ (the parent skill's Phase 1 + Phase 2).
 
 ## Install
 
-### 1. Editable install into a Python environment
+The skill ships a one-line installer. Run it once after cloning:
 
-From the skill's `mcp/` directory:
+```bash
+SKILL="$HOME/Salesforce/workspace/mulesoft-dx/skills/mule-development/build-headless-integration"
+bash "$SKILL/scripts/install_mcp_server.sh"
+```
+
+What it does (idempotent, safe to re-run):
+
+1. Creates a Python venv at `mcp/.venv/` using a 3.11+ interpreter.
+2. Runs `pip install -e mcp/` so the `build-headless-integration-mcp` console
+   script lands on the venv's PATH. Editable mode means subsequent edits to
+   `parse.py`, `server.py`, or `ui/*` take effect on the next tool call.
+3. Adds (or updates) an `mcpServers.mule-flow-canvas` entry in
+   `~/Library/Application Support/Claude/claude_desktop_config.json`.
+   Existing entries and preferences are preserved; the previous config is
+   backed up to `claude_desktop_config.json.bak.<timestamp>` before edit.
+
+To uninstall (removes the config entry; leaves the venv in place):
+
+```bash
+bash "$SKILL/scripts/install_mcp_server.sh" --uninstall
+```
+
+### Manual install (if you can't run the script)
+
+If the installer fails for any reason, the equivalent manual steps are:
 
 ```bash
 SKILL="$HOME/Salesforce/workspace/mulesoft-dx/skills/mule-development/build-headless-integration"
 cd "$SKILL/mcp"
-
-# Create a dedicated venv (recommended). Replace python3.12 with your 3.11+ binary.
 python3.12 -m venv .venv
-source .venv/bin/activate
-
-pip install -e .
+.venv/bin/pip install -e .
 ```
 
-Editable (`-e`) means edits to `parse.py`, `server.py`, or any of the
-`ui/*` files take effect on the next tool call without reinstalling. The
-console script `build-headless-integration-mcp` lands in the venv's `bin/`.
-
-### 2. Register with Claude Desktop
-
-Open `~/Library/Application Support/Claude/claude_desktop_config.json` (or
-the equivalent path on your platform) and add an entry under
-`mcpServers`. The `command` must be the absolute path to the venv's
-console script (NOT `build-headless-integration-mcp` on its own — Claude
-Desktop launches with a minimal PATH):
+Then edit `~/Library/Application Support/Claude/claude_desktop_config.json`
+and add (under `mcpServers`):
 
 ```jsonc
 {
   "mcpServers": {
     "mule-flow-canvas": {
-      "command": "/Users/<you>/Salesforce/workspace/mulesoft-dx/skills/mule-development/build-headless-integration/mcp/.venv/bin/build-headless-integration-mcp"
+      "command": "/abs/path/to/skills/mule-development/build-headless-integration/mcp/.venv/bin/build-headless-integration-mcp"
     }
   }
 }
 ```
 
-If you have other MCP servers configured, just add this entry alongside.
+The `command` must be the **absolute** path to the venv's console script —
+Claude Desktop spawns subprocesses with a minimal PATH, so a bare
+`build-headless-integration-mcp` won't resolve.
 
-### 3. Restart Claude Desktop
+### Restart Claude Desktop
 
 Quit fully (⌘Q) and re-open. The first time the app starts, it spawns the
 MCP server over stdio and discovers the `render_mule_flow` tool. To

@@ -13,6 +13,8 @@ Generate a versionless `.mule/project.json`-driven Mule integration project that
 3. Produces a project with the same shape as `go-runtime/testdata/apps/salesforce-accounts-to-twilio` in the sibling go-runtime checkout.
 4. Renders the flow inline in Claude Desktop and lets the user click "Test Connection" inside ACB.
 
+> **Run the skill in Claude Desktop's chat tab** (claude.ai web view). The "code" tab (Claude Code CLI) and "workflow" tab (Cowork) cannot iframe the canvas — they don't speak the MCP UI extension. SKILL.md flags this up front so the agent doesn't surprise the user at Step 7.
+
 ## Current architecture
 
 ```
@@ -43,22 +45,24 @@ Reference contracts (paths in the workspace; `mule-dx-mule-dev-component`, `go-r
 - All scripts default to `WS_DIR=$HOME/Salesforce/projects/headless` (override via env)
 - Two-phase Design → Build pattern with hard approval gate
 
-### Phase 1 — Design
+### Phase 1 — Design (one bash chip thanks to phase1.sh)
 
-- [`scripts/validate_prerequisites.sh`](scripts/validate_prerequisites.sh) — Node 18+, jq, curl, ACB presence; auto-brings up RDS via `ensure_rds.sh` and hard-fails if RDS isn't reachable
+- [`scripts/phase1.sh`](scripts/phase1.sh) — **single-chip orchestrator** that calls `validate_prerequisites` + `ensure_rds` + `pick_connector` + `describe_connector` for every `<nick>:<connector>` pair in one bash invocation. Cuts ~30s of perceived latency by collapsing 5+ separate "Used Bash" chips (and their LLM round-trips) into one.
+- [`scripts/validate_prerequisites.sh`](scripts/validate_prerequisites.sh) — Node 18+, jq, curl, ACB presence; auto-brings up RDS via `ensure_rds.sh` and hard-fails if RDS isn't reachable. Called by `phase1.sh`; standalone-callable.
 - [`scripts/ensure_rds.sh`](scripts/ensure_rds.sh) — probe `MULE_DX_RDS_URL/healthz` (default `http://localhost:8090`), defer to `start_real_rds.sh` on miss. Idempotent.
 - [`scripts/start_real_rds.sh`](scripts/start_real_rds.sh) — defers to `go-runtime/start-rds.sh`; preflight checks Docker + Go toolchain + data-weave sibling
-- [`scripts/list_rds_connectors.sh`](scripts/list_rds_connectors.sh) — probe `GET /v1/connectors`, annotated with whether each is pickable (has `/descriptor`)
-- [`scripts/search_connectors.sh`](scripts/search_connectors.sh) — query RDS `GET /v1/connectors`, filter by substring
-- [`scripts/seed_cache.sh`](scripts/seed_cache.sh) — one-shot pre-warm of `$ACB_HOME/.cache/go/<name>/` from RDS so subsequent picks succeed offline
-- [`scripts/pick_connector.sh`](scripts/pick_connector.sh) — record bundle name + prefix + namespace + schemaLocation
-- [`scripts/describe_connector.sh`](scripts/describe_connector.sh) — generates rich digest + the build-mule-integration file family
+- [`scripts/list_rds_connectors.sh`](scripts/list_rds_connectors.sh) — probe `GET /v1/connectors`, annotated with whether each is pickable (has `/descriptor`). Optional helper for ad-hoc lookups.
+- [`scripts/search_connectors.sh`](scripts/search_connectors.sh) — query RDS `GET /v1/connectors`, filter by substring. Optional helper.
+- [`scripts/seed_cache.sh`](scripts/seed_cache.sh) — one-shot pre-warm of `$ACB_HOME/.cache/go/<name>/` from RDS so subsequent picks succeed offline.
+- [`scripts/pick_connector.sh`](scripts/pick_connector.sh) — record bundle name + prefix + namespace + schemaLocation. Called by `phase1.sh`; standalone-callable for re-picks.
+- [`scripts/describe_connector.sh`](scripts/describe_connector.sh) — generates rich digest + the build-mule-integration file family. Called by `phase1.sh`; standalone-callable.
 
 ### Phase 2 — Build
 
 - [`scripts/commit_design_spec.sh`](scripts/commit_design_spec.sh) — merge picks into `tmp/design-spec.json`
 - [`scripts/create_versionless_project.sh`](scripts/create_versionless_project.sh) — emits `project-manifest.json` (name-only, matches upgrade-to-versionless output), `.mule/project.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml` with env-var defaults. Pre-warms `$ACB_HOME/.cache/go/<name>/` so the ACB plugin's `ManifestRdsExtensionModelSource` renders the canvas without a fresh RDS fetch.
 - [`scripts/validate_generated_flow_xml.sh`](scripts/validate_generated_flow_xml.sh) — five checks: schemaLocation pairs, known DSL elements, error types, `config-ref` resolution, `${...}` placeholder coverage
+- [`scripts/install_mcp_server.sh`](scripts/install_mcp_server.sh) — one-time installer for the flow-canvas MCP server (venv + pip install -e + JSON-merge into `claude_desktop_config.json`). Idempotent; supports `--uninstall`.
 
 ### Helpers
 
@@ -109,7 +113,7 @@ A `salesforce-accounts-to-twilio-headless/` project under `$WS_DIR` produced fro
 
 - **Validator: per-element attribute coverage** — `validate_generated_flow_xml.sh` checks element names, error types, config-refs, and `${...}` placeholders, but **not whether each `<prefix:element attrX=...>` uses an attribute name the descriptor's dsl.json declares for that element**. Real bug this missed (2026-06-05): the agent wrote `<salesforce:query salesforceQuery="...">` (Java-connector attribute name) when the Go connector's descriptor declared `soql`. ACB rendered it as an invalid attribute warning. Fix: add a 6th check that for every `<prefix:elementName>` in the flow XML, every attribute except `doc:*` / `xmlns:*` / `xsi:*` must appear in `dsl.json:operations[<name>].attributes` (or `connectionProviders[*]` / `configurations[*]`). Same lookup the canvas does on render.
 
-- ~~**MCP flow renderer**~~ — **DONE (v1).** [`mcp/`](mcp/README.md) ships a standalone FastMCP server that exposes `render_mule_flow(project_dir)`. It parses the flow XML into a flat `{nodes, edges}` graph and returns a UI resource Claude Desktop iframes inline (React Flow + dagre, top-to-bottom layout, in-iframe side panel for node attributes). Step 10 in [`SKILL.md`](SKILL.md) now calls this tool. **v1 limitations** (deliberate): containers like `<choice>` / `<try>` / `<scatter-gather>` collapse to a single summary node — a real nested visualisation requires porting the layout engine from `mule-dx-mule-dev-vscode/src/views/xml-editor/` and is a v2 task. Read-only; no edit-from-canvas; no per-connector icons (generic kind badges).
+- ~~**MCP flow renderer**~~ — **DONE (v1).** [`mcp/`](mcp/README.md) ships a standalone FastMCP server that exposes `render_mule_flow(project_dir)`. It parses the flow XML into a flat `{nodes, edges}` graph and returns a UI resource Claude Desktop iframes inline (React Flow + dagre, top-to-bottom layout, in-iframe side panel for node attributes). Step 7 in [`SKILL.md`](SKILL.md) now calls this tool. **v1 limitations** (deliberate): containers like `<choice>` / `<try>` / `<scatter-gather>` collapse to a single summary node — a real nested visualisation requires porting the layout engine from `mule-dx-mule-dev-vscode/src/views/xml-editor/` and is a v2 task. Read-only; no edit-from-canvas; no per-connector icons (generic kind badges).
 
 ### Java platform
 
@@ -146,18 +150,20 @@ build-headless-integration/
 ├── SKILL.md                                    main entry
 ├── STATUS.md                                   this file
 ├── scripts/                                    bash helpers (the agent invokes these)
-│   ├── validate_prerequisites.sh               Step 1 — env probes + auto-bring-up of RDS
+│   ├── phase1.sh                               Step 2 — single-chip orchestrator (validate + ensure_rds + pick + describe)
+│   ├── validate_prerequisites.sh               env probes + auto-bring-up of RDS (called by phase1.sh)
 │   ├── ensure_rds.sh                           probe MULE_DX_RDS_URL/healthz; defer to ↓ on miss
 │   ├── start_real_rds.sh                       real RDS via Docker + go-runtime/start-rds.sh
-│   ├── list_rds_connectors.sh
-│   ├── search_connectors.sh
-│   ├── pick_connector.sh                       (resolves bundles via fetch_bundle.sh)
+│   ├── list_rds_connectors.sh                  (optional helper, ad-hoc lookups)
+│   ├── search_connectors.sh                    (optional helper)
+│   ├── pick_connector.sh                       (called by phase1.sh; resolves bundles via fetch_bundle.sh)
 │   ├── fetch_bundle.sh                         (cache → RDS /descriptor)
 │   ├── seed_cache.sh                           (one-shot pre-warm of ACB cache from RDS)
-│   ├── describe_connector.sh
-│   ├── commit_design_spec.sh
-│   ├── create_versionless_project.sh
-│   └── validate_generated_flow_xml.sh
+│   ├── describe_connector.sh                   (called by phase1.sh)
+│   ├── commit_design_spec.sh                   Step 6
+│   ├── create_versionless_project.sh           Step 6
+│   ├── validate_generated_flow_xml.sh          Step 6.5
+│   └── install_mcp_server.sh                   one-time setup for Step 7 (venv + claude_desktop_config.json)
 ├── helpers/                                    Node helpers (data only)
 │   ├── digest_extension_model.mjs
 │   ├── emit_metadata_files.mjs
@@ -165,7 +171,7 @@ build-headless-integration/
 ├── references/                                 docs the agent reads
 │   ├── reference-flow-pattern.md               flow skeleton + trigger variants + rules
 │   └── rds-protocol.md                         RDS wire contract (operator-facing)
-└── mcp/                                        Step 10 flow-render MCP server (FastMCP + React Flow)
+└── mcp/                                        Step 7 flow-render MCP server (FastMCP + React Flow)
     ├── README.md                               install + claude_desktop_config.json snippet
     ├── pyproject.toml                          Python 3.11+, mcp[cli], lxml; console_script entry
     ├── build_headless_integration_mcp/
@@ -262,12 +268,8 @@ PATH=/opt/homebrew/bin:$PATH \
 SKILL="$HOME/Salesforce/workspace/mulesoft-dx/skills/mule-development/build-headless-integration"
 WS_DIR="$HOME/Salesforce/projects/headless"   # default; override with WS_DIR=...
 
-# Phase 1
-"$SKILL/scripts/validate_prerequisites.sh"   # auto-brings up RDS if needed; hard-fails on miss
-"$SKILL/scripts/pick_connector.sh" sfdc salesforce
-"$SKILL/scripts/pick_connector.sh" twilio twilio
-"$SKILL/scripts/describe_connector.sh" sfdc
-"$SKILL/scripts/describe_connector.sh" twilio
+# Phase 1 — one bash chip thanks to phase1.sh
+"$SKILL/scripts/phase1.sh" sfdc:salesforce twilio:twilio
 
 # Phase 2
 echo '{
@@ -283,7 +285,10 @@ PROJECT="$WS_DIR/smoke-demo"
 "$SKILL/scripts/create_versionless_project.sh" "$PROJECT"
 # (the agent writes $PROJECT/src/main/mule/<name>.xml from the digest)
 "$SKILL/scripts/validate_generated_flow_xml.sh" "$PROJECT"
-# Step 10 (visualization) is currently a no-op pending the MCP flow-render tool.
+
+# Step 7 (visualization) — only renders in Claude Desktop's chat tab.
+# To verify the MCP server itself works, run from any shell:
+"$SKILL/mcp/.venv/bin/build-headless-integration-mcp" <<<'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}'
 ```
 
-Open `$PROJECT/` in ACB. Test Connection on the connector configs hits the running RDS at `MULE_DX_RDS_URL`.
+Open `$PROJECT/` in ACB to see the same canvas — Test Connection on the connector configs hits the running RDS at `MULE_DX_RDS_URL`.

@@ -96,7 +96,7 @@ the sibling `build-mule-integration` skill's `tmp/` produces — any tool that r
 
 Override per session if needed: `WS_DIR=/some/other/path bash "$SKILL/scripts/<name>.sh"`. All scripts honor it. `ACB_HOME` overrides the cache root (default `$HOME/AnypointCodeBuilder`).
 
-The user opens `$WS_DIR/<projectName>/` in ACB after Step 10 — never `tmp/`. ACB then reads `project-manifest.json`, sees connector names, hits the warm `$ACB_HOME/.cache/go/<name>/` for descriptors, and the canvas renders.
+The user opens `$WS_DIR/<projectName>/` in ACB after Step 7 — never `tmp/`. ACB then reads `project-manifest.json`, sees connector names, hits the warm `$ACB_HOME/.cache/go/<name>/` for descriptors, and the canvas renders.
 
 ---
 
@@ -110,16 +110,18 @@ Invoke each script with the `Bash` tool. State persists under `$WS_DIR/tmp/` so 
 | `scripts/ensure_rds.sh` | Probe `MULE_DX_RDS_URL/healthz` (default `http://localhost:8090`). On miss, defers to `start_real_rds.sh`. Idempotent. | `tmp/rds.json` (`{url, managed, pid, backend: "real"}`) |
 | `scripts/start_real_rds.sh [--rebuild\|down]` | Bring up the real RDS + ConnectivityService stack via `go-runtime/start-rds.sh`. Requires Docker + a `go-runtime` checkout (default `$HOME/Salesforce/workspace/go-runtime`; override via `GO_RUNTIME`). | `tmp/rds.json` (`backend: "real"`) |
 | `scripts/list_rds_connectors.sh` | Probe `GET /v1/connectors` — list which connector binaries the running ConnectivityService has loaded, annotated with whether each is pickable (has a static `/descriptor` available). | stdout JSON |
-| `scripts/search_connectors.sh <term>` | Step 4 — list connectors matching a term, sourced from RDS `GET /v1/connectors`. Format: `<name>\t<operations-count>` per line. | stdout |
-| `scripts/pick_connector.sh <nick> <name>` | Step 4 — record the picked Go connector (resolves prefix, namespace, schemaLocation). Bundle resolution goes through `fetch_bundle.sh` (cache → RDS `/descriptor`). | `tmp/connector-choices/<nick>.json` |
+| `scripts/search_connectors.sh <term>` | Optional helper — list connectors matching a term, sourced from RDS `GET /v1/connectors`. Format: `<name>\t<operations-count>` per line. Use for ad-hoc lookups; `phase1.sh` does not invoke this. | stdout |
+| `scripts/pick_connector.sh <nick> <name>` | Called by `phase1.sh` (Step 2) — records the picked Go connector (resolves prefix, namespace, schemaLocation). Bundle resolution goes through `fetch_bundle.sh` (cache → RDS `/descriptor`). Callable standalone for re-picks. | `tmp/connector-choices/<nick>.json` |
 | `scripts/fetch_bundle.sh <name>` | Resolve a connector bundle to a directory. Tries `$ACB_HOME/.cache/go/<name>/` (the same warm cache the ACB plugin reads on project-open), then `GET /v1/connectors/<name>/descriptor` (atomic 3-in-1 response) with write-through to the cache. Used by `pick_connector.sh`. | resolved bundle dir on stdout |
 | `scripts/seed_cache.sh <name>... \| --from-rds` | One-shot pre-warm of `$ACB_HOME/.cache/go/<name>/` from RDS. Run once after a fresh checkout so subsequent picks succeed offline. | per-name status on stdout |
-| `scripts/describe_connector.sh <nick>` | Step 5 — generate the rich digest + split it into the per-shape file family build-mule-integration produces (flat reference, per-op metadata, per-config metadata, error whitelists). Stdout lists each operation/source/provider with its **DSL element name** (sourced from the bundle's `dsl.json`) and required-param set. | `tmp/connector-metadata/<nick>-digest.json` (rich), `tmp/connector-metadata/<nick>.json` (flat reference), `tmp/connector-metadata/<nick>-<op>.json` (per-op), `tmp/connector-metadata/<nick>-config.json` (per-config), `tmp/connector-errors/<nick>.json` + `<nick>.<op>.json` |
-| `scripts/commit_design_spec.sh` | Step 9 — read agent-supplied design spec on stdin; merge picks into `tmp/design-spec.json` | `tmp/design-spec.json` |
-| `scripts/create_versionless_project.sh <projectDir>` | Step 9 — write `.mule/project.json`, `project-manifest.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml`. No bundles inside the project — they live in the warm cache (`$ACB_HOME/.cache/go/<name>/`), pre-warmed during this step. | project on disk + cache pre-warmed |
-| `scripts/validate_generated_flow_xml.sh <projectDir>` | Step 9.5 — validate the generated flow XML against the connector digests: schemaLocation pairs, known DSL element names, error types in `<on-error-propagate>`, `config-ref` resolution, `${...}` placeholders matching `config.yaml` keys. Cheap analogue of `validate_before_build.sh` from the build-mule-integration skill. | exit 0 on success; non-zero with stderr report on failure |
+| `scripts/describe_connector.sh <nick>` | Called by `phase1.sh` (Step 2) — generates the rich digest + split per-shape files (flat reference, per-op metadata, per-config metadata, error whitelists). Stdout lists each operation/source/provider with its **DSL element name** (sourced from `dsl.json`) and required-param set. | `tmp/connector-metadata/<nick>-digest.json` (rich), `tmp/connector-metadata/<nick>.json` (flat reference), `tmp/connector-metadata/<nick>-<op>.json` (per-op), `tmp/connector-metadata/<nick>-config.json` (per-config), `tmp/connector-errors/<nick>.json` + `<nick>.<op>.json` |
+| `scripts/phase1.sh <nick>:<connector> [...]` | **Step 2** — single-chip orchestrator that runs `validate_prerequisites` + `ensure_rds` + `pick_connector` + `describe_connector` for every connector pair, then prints a combined digest. Replaces 5+ separate bash chips. | per-script `tmp/` artifacts + combined stdout digest |
+| `scripts/commit_design_spec.sh` | Step 6 — read agent-supplied design spec on stdin; merge picks into `tmp/design-spec.json` | `tmp/design-spec.json` |
+| `scripts/create_versionless_project.sh <projectDir>` | Step 6 — write `.mule/project.json`, `project-manifest.json`, stub `pom.xml`, `mule-artifact.json`, dot-keyed `config.yaml`. No bundles inside the project — they live in the warm cache (`$ACB_HOME/.cache/go/<name>/`), pre-warmed during this step. | project on disk + cache pre-warmed |
+| `scripts/validate_generated_flow_xml.sh <projectDir>` | Step 6.5 — validate the generated flow XML against the connector digests: schemaLocation pairs, known DSL element names, error types in `<on-error-propagate>`, `config-ref` resolution, `${...}` placeholders matching `config.yaml` keys. Cheap analogue of `validate_before_build.sh` from the build-mule-integration skill. | exit 0 on success; non-zero with stderr report on failure |
+| `scripts/install_mcp_server.sh [--uninstall]` | One-time setup for Step 7 — venv + pip install + `claude_desktop_config.json` entry for the flow-canvas MCP server. Idempotent. | venv at `mcp/.venv/`, edited Claude Desktop config |
 
-The agent generates the flow XML inline at Step 9 — bash does not call an LLM. The connector digest in `tmp/connector-metadata/<nick>.json` is the input.
+The agent generates the flow XML inline at Step 6 — bash does not call an LLM. The connector digest in `tmp/connector-metadata/<nick>.json` is the input.
 
 **Always invoke scripts via absolute paths.** The skill is active under a fixed directory; record that path once at session start (e.g. `SKILL=$(pwd at activation)`) and use `"$SKILL/scripts/<name>.sh"` for every invocation. Never `bash scripts/...` from a relative-cwd assumption — the agent's `$PWD` may change between turns.
 
@@ -129,10 +131,10 @@ The agent generates the flow XML inline at Step 9 — bash does not call an LLM.
 
 This workflow has two phases separated by a hard user-approval gate.
 
-- **Phase 1: Design (Steps 1–8).** Validate prereqs, ensure RDS is reachable, identify systems, pick + describe connectors, propose a trigger and connection providers, present the Technical Design Summary, wait for approval. Phase 1 writes only to `tmp/`.
-- **Phase 2: Build (Steps 9–10).** Materialize the project, generate the flow XML, render the visualization. Phase 2 is the only phase that touches the user's project directory.
+- **Phase 1: Design (Steps 1–5).** Identify systems and trigger hint, run `phase1.sh` (one bash call that brings up RDS + picks + describes all connectors), pick a trigger and connection providers, present the Technical Design Summary, wait for approval. Phase 1 writes only to `tmp/`.
+- **Phase 2: Build (Steps 6–7).** Materialize the project, generate the flow XML, validate, render the canvas. Phase 2 is the only phase that touches the user's project directory.
 
-Phase 2 MUST NOT start until Step 8's approval gate passes explicitly.
+Phase 2 MUST NOT start until Step 5's approval gate passes explicitly.
 
 ## Workflow-wide discipline (read before Phase 1)
 
@@ -147,74 +149,56 @@ Phase 2 MUST NOT start until Step 8's approval gate passes explicitly.
 
 # Phase 1: Design
 
-## Step 1: Validate Prerequisites (and bring up RDS)
+## Where to run this skill
 
-```bash
-bash "$SKILL/scripts/validate_prerequisites.sh"
-```
+**Run in the Claude Desktop chat tab (claude.ai web view).** That's the only surface that:
+- Speaks the MCP UI extension (`io.modelcontextprotocol/ui`) needed to render the flow inline.
+- Can iframe the canvas Step 7 produces.
 
-This script does three things in order:
-1. Probes Node 18+, jq, curl, and the ACB install directory.
-2. Calls `ensure_rds.sh`, which probes `MULE_DX_RDS_URL/healthz` (default `http://localhost:8090`) and — on miss — auto-brings-up the real Go RDS via `start_real_rds.sh` (which delegates to `go-runtime/start-rds.sh`).
-3. Writes `tmp/headless-env.json` with the resolved versions and `rds_status: "reachable"`.
+The "code" tab (Claude Code CLI) and "workflow" tab (Cowork) cannot render the canvas. If a user asks for the skill from the code tab, the tool calls and bash chips work fine — but the final canvas at Step 7 will only show in the chat tab. Tell the user up front; don't surprise them at Step 7.
 
-**If the exit code is non-zero, STOP.** Surface `tmp/headless-env.json:.errors[]` to the user. The skill targets the real RDS only — there is no stub fallback. Common failure modes:
-- Docker not running (RDS can't be brought up automatically).
-- `go-runtime` checkout missing (override with `GO_RUNTIME=/path/to/go-runtime`).
-- Port 8090 occupied by something else (override with `MULE_DX_RDS_URL=...`).
-
-After this step, `tmp/rds.json` carries `{ "url": "...", "backend": "real" }` and subsequent steps reuse that URL via the file.
-
-## Step 2: Confirm connectors RDS has loaded (optional, recommended)
-
-```bash
-bash "$SKILL/scripts/list_rds_connectors.sh"
-```
-
-Lists every connector binary `connector-service` loaded plus whether each has a static descriptor (and is therefore pickable). Use this when the user names a connector you don't recognize — confirm it's loaded before Step 4.
-
-## Step 3: Identify Systems and Trigger Hints
+## Step 1: Identify Systems and Trigger Hints
 
 **[BLOCKER]** Do not prompt the user here. Produce prose only:
 
-1. **Systems list** — exact connector names (e.g. `salesforce`, not "CRM"). Confirm names against `bash "$SKILL/scripts/list_rds_connectors.sh"` if unsure.
-2. **Trigger hint** — verbatim phrase from the user ("every 60 seconds", "on incoming HTTP", "when a record is created"). Do not commit to a trigger choice; that's Step 6.
+1. **Systems list** — exact connector names (e.g. `salesforce`, not "CRM"). If unsure of the exact name, you can confirm against the live RDS catalog by running `bash "$SKILL/scripts/list_rds_connectors.sh"` (optional; Step 2 catches unknown connectors anyway).
+2. **Trigger hint** — verbatim phrase from the user ("every 60 seconds", "on incoming HTTP", "when a record is created"). Do not commit to a trigger choice; that's Step 4.
 
-## Step 4: Pick connectors
-
-For each system in the list:
+## Step 2: Phase 1 — bring up RDS, pick + describe all connectors (one bash call)
 
 ```bash
-bash "$SKILL/scripts/search_connectors.sh" <term>
+bash "$SKILL/scripts/phase1.sh" <nick1>:<connector1> [<nick2>:<connector2> ...]
 ```
 
-Examine the ranked list. If exactly one row matches the user's intent, pick it:
-
+**Example:**
 ```bash
-bash "$SKILL/scripts/pick_connector.sh" <nick> <bundle-name>
+bash "$SKILL/scripts/phase1.sh" sfdc:salesforce twilio:twilio
 ```
 
-If multiple rows could match (different vendor / different family), ask the user via `AskUserQuestion` — never guess. The cost of one prompt is one turn; the cost of a silent wrong pick is a full Phase 2 rewrite.
+Each pair binds a nickname (used as the local handle in the design spec + `config.yaml`) to a connector loaded on RDS.
 
-If `search_connectors.sh` exits non-zero, the connector isn't loaded on RDS. **Stop** and tell the user. Do not invent.
+What `phase1.sh` does in one go:
 
-## Step 5: Describe each picked connector
+1. Validates prereqs (Node 18+, jq, curl, ACB install) and brings up the real Go RDS via `ensure_rds.sh` if not already running.
+2. Picks each connector — fetches its descriptor (cache → RDS), records `tmp/connector-choices/<nick>.json` with prefix/namespace/schemaLocation.
+3. Describes each connector — emits the rich digest to `tmp/connector-metadata/<nick>-digest.json` and the per-shape file family (flat reference, per-op, per-config, error whitelists).
+4. Prints a combined digest to stdout: every operation, source, connection provider, and config element for every picked connector. The agent reads this single block to plan Steps 3–5.
 
-```bash
-bash "$SKILL/scripts/describe_connector.sh" <nick>
-```
+**On failure:** the script aborts at the first failing step (set -e). Surface the stderr to the user. Common failure modes:
+- Docker not running → RDS can't auto-bring-up. Tell the user to start Docker Desktop.
+- `go-runtime` checkout missing → override with `GO_RUNTIME=/path/to/go-runtime` and rerun.
+- Connector name not loaded on RDS → `phase1.sh` fails with `404 — connector '<name>' not loaded on RDS`. Run `list_rds_connectors.sh` to see what's available; pick a different connector or tell the user it's unavailable.
+- Port 8090 occupied → override with `MULE_DX_RDS_URL=...` and rerun.
 
-The stdout digest tells you:
+**Why this is one script, not five:** every separate bash invocation in the chat tab is a separate "Used Bash" chip + a fresh LLM round-trip. Phase 1 used to be 5+ chips for a 2-connector flow (validate, ensure_rds, pick × 2, describe × 2). Collapsing to one chip cuts ~30 seconds of perceived latency per session.
 
-- The DSL prefix and namespace.
-- Operations + their required parameters.
-- Sources (if any).
-- Connection providers + their required fields.
-- The config element name (e.g. `salesforce:sfdc-config`).
+The individual scripts (`validate_prerequisites.sh`, `pick_connector.sh`, `describe_connector.sh`, etc.) still exist and are still callable on their own — `phase1.sh` is just a single-chip orchestrator. Use the individual scripts when:
+- You're debugging one specific step (e.g., re-describe one connector after seeding a new descriptor).
+- The user wants to add one more connector to an already-running design dialogue.
 
-The full extension-model digest is cached at `tmp/connector-metadata/<nick>.json`. Read it with the `Read` tool when generating the flow XML at Step 9.
+The full extension-model digest is cached at `tmp/connector-metadata/<nick>.json`. Read it with the `Read` tool when generating the flow XML at Step 6.
 
-## Step 6: Trigger Selection
+## Step 3: Trigger Selection
 
 Decide the trigger using a short ladder:
 
@@ -223,11 +207,11 @@ Decide the trigger using a short ladder:
 3. **HTTP Listener** — for "on incoming HTTP" / "expose a webhook".
 4. **Ask the user** — if none of the above clearly fits.
 
-## Step 7: Connection Provider Selection
+## Step 4: Connection Provider Selection
 
-For each picked connector with `requiresConnection: true`, pick a provider from the digest's "connection providers:" list. Default to the first one with the simplest required-fields set unless the user specifies (e.g. "OAuth", "JWT"). Record the choice in the design-spec JSON you'll commit at Step 9.
+For each picked connector with `requiresConnection: true`, pick a provider from the digest's "connection providers:" list. Default to the first one with the simplest required-fields set unless the user specifies (e.g. "OAuth", "JWT"). Record the choice in the design-spec JSON you'll commit at Step 6.
 
-## Step 8: Technical Design Summary + Approval Gate
+## Step 5: Technical Design Summary + Approval Gate
 
 Present prose summarizing:
 
@@ -238,13 +222,13 @@ Present prose summarizing:
 - **Connection providers** (one per connector, with required fields the user must fill in).
 - **Project layout** that will be written: `.mule/project.json`, `project-manifest.json`, `mule-artifact.json`, stub `pom.xml`, `src/main/mule/<projectName>.xml`, `src/main/resources/config.yaml`. Connector descriptors are NOT copied into the project — they live in the warm cache at `$ACB_HOME/.cache/go/<name>/`.
 
-Then ask: **"Proceed to build?"** Wait for an explicit affirmative before Step 9.
+Then ask: **"Proceed to build?"** Wait for an explicit affirmative before Step 6.
 
 ---
 
 # Phase 2: Build
 
-## Step 9: Commit + Materialize
+## Step 6: Commit + Materialize
 
 The agent assembles the design spec JSON, pipes it to `commit_design_spec.sh`, then calls `create_versionless_project.sh`, then writes the flow XML.
 
@@ -285,7 +269,7 @@ Quick checklist for the XML the agent writes:
 - **DataWeave** belongs in `<ee:transform>` blocks with CDATA. Use `output application/json` for responses, `application/x-www-form-urlencoded` for form-posting connectors.
 - **`target="<varName>"`** to capture an operation's output into a variable instead of overwriting `payload`.
 
-## Step 9.5: Validate the flow XML
+## Step 6.5: Validate the flow XML
 
 ```bash
 bash "$SKILL/scripts/validate_generated_flow_xml.sh" "$WS_DIR/<projectName>"
@@ -299,9 +283,9 @@ Catches the failure modes the old `validate_before_build.sh` used to catch at `m
 - `config-ref="ghost"` with no top-level `name="ghost"` element
 - `${dotted.key}` placeholder with no matching key in `config.yaml`
 
-If validation fails, fix the XML and re-run before Step 10. The generator runs offline so this is the catch-net for typos and digest drift.
+If validation fails, fix the XML and re-run before Step 7. The generator runs offline so this is the catch-net for typos and digest drift.
 
-## Step 10: Render the flow inline
+## Step 7: Render the flow inline
 
 The skill ships a companion MCP server at [`mcp/`](mcp/README.md) that renders the generated flow as an interactive React Flow canvas in the Claude Desktop chat. After the project exists on disk and validation passes, call:
 
@@ -311,15 +295,30 @@ render_mule_flow(project_dir="$WS_DIR/<projectName>")
 
 The tool reads `<project_dir>/src/main/mule/<name>.xml`, parses it into a `{nodes, edges}` graph (one node per top-level processor; containers like `<choice>`/`<try>` collapse to one summary node), and returns a UI resource Claude Desktop iframes inline. Click any node in the canvas to see its XML attributes in a side panel. The canvas is read-only — flow edits go through the chat (the agent regenerates the project).
 
-If `render_mule_flow` is not available as an MCP tool:
+**The renderer has no RDS dependency.** It reads only the project's flow XML and bundled connector icons; once the project is on disk, the canvas works whether RDS is up or down.
 
-1. Surface that to the user — the MCP server isn't installed or registered with Claude Desktop.
-2. Point them at [`mcp/README.md`](mcp/README.md) for the one-time install + `claude_desktop_config.json` snippet.
-3. As a fallback, tell them they can open the project in ACB to see the canvas — same data, different surface.
+### When `render_mule_flow` is NOT available as an MCP tool
 
-Do not silently skip Step 10. Either render or surface why we couldn't.
+This means Claude Desktop hasn't been told about the server yet (the skill folder by itself doesn't auto-register the MCP server with Claude Desktop). Run the bundled installer once:
 
-After Step 10:
+```bash
+bash "$SKILL/scripts/install_mcp_server.sh"
+```
+
+The installer (idempotent, safe to re-run):
+1. Creates a Python venv at `mcp/.venv/` using a 3.11+ interpreter.
+2. Runs `pip install -e mcp/` so the `build-headless-integration-mcp` console script lands on the venv's PATH.
+3. Adds an `mcpServers.mule-flow-canvas` entry to `~/Library/Application Support/Claude/claude_desktop_config.json` (existing entries preserved; existing config backed up to `claude_desktop_config.json.bak.<timestamp>`).
+
+After the installer prints "Installed", **the user must quit and relaunch Claude Desktop** (⌘Q → reopen). MCP servers spawn at app start; a hot config reload registers the server but the iframe pipeline only initialises once per app lifetime.
+
+To uninstall: `bash "$SKILL/scripts/install_mcp_server.sh" --uninstall`.
+
+### Fallback when the MCP server cannot be installed
+
+If the user can't install the server (no Python 3.11+, no Claude Desktop, etc.), tell them they can open the project in ACB to see the same canvas — different surface, same data. Do not silently skip Step 7. Either render, surface the install path, or surface the ACB fallback.
+
+After Step 7:
 
 ```bash
 rm -rf "$WS_DIR/tmp/"   # optional — keep tmp/ if you'll re-run the skill
@@ -340,5 +339,5 @@ bash "$SKILL/scripts/start_real_rds.sh" down
 - **Reaching for anypoint-cli-v4.** This is the wrong skill if you're tempted. Switch to `build-mule-integration`.
 - **Inventing a connector name.** Only connectors RDS has loaded exist. `bash "$SKILL/scripts/list_rds_connectors.sh"` prints the live catalog. If `search_connectors.sh` finds none, stop.
 - **Inventing operation names or parameter names.** They live in the digest. If a parameter isn't in the digest, it's not a parameter of that operation.
-- **Skipping the approval gate.** Step 8 is non-optional. Phase 2 can be irreversible (overwrites the project dir if it exists).
+- **Skipping the approval gate.** Step 5 is non-optional. Phase 2 can be irreversible (overwrites the project dir if it exists).
 - **Proceeding without RDS.** Step 1 hard-fails if RDS isn't reachable. There is no stub fallback. If `validate_prerequisites.sh` exits non-zero, surface the error to the user and stop — do not invent connector data or skip ahead.
