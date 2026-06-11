@@ -61,6 +61,29 @@ if [[ -z "$PROJECT_DIR" ]]; then
   exit 2
 fi
 
+# Refuse to write to $WS_DIR itself (the workspace-root parent that holds tmp/
+# and every project subdirectory). Without this guard, a typo or a relative-
+# path mistake makes the script scatter .mule/, project-manifest.json, pom.xml,
+# mule-artifact.json, src/, etc. straight into the workspace root — which
+# pollutes every future project under that workspace and produces orphan files
+# (`config.yaml`, `services/`) that look like skill bugs.
+PROJECT_DIR_ABS_CHECK="$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P || echo "")"
+WS_DIR_ABS_CHECK="$(cd "$WS_DIR" 2>/dev/null && pwd -P || echo "")"
+if [[ -n "$PROJECT_DIR_ABS_CHECK" && "$PROJECT_DIR_ABS_CHECK" == "$WS_DIR_ABS_CHECK" ]]; then
+  cat >&2 <<EOF
+create_versionless_project.sh: refusing to write project files to \$WS_DIR root.
+
+Resolved <projectDir> ($PROJECT_DIR) is the workspace root ($WS_DIR_ABS_CHECK).
+That directory holds tmp/ and every project subdirectory; emitting .mule/,
+project-manifest.json, pom.xml, mule-artifact.json, src/main/... here would
+pollute the workspace and shadow every future project.
+
+Pass an actual project directory inside \$WS_DIR, e.g.:
+  create_versionless_project.sh "$WS_DIR_ABS_CHECK/my-integration"
+EOF
+  exit 2
+fi
+
 # Refuse to overwrite an existing project unless --force was passed. Re-running
 # the skill against the same directory used to silently clobber every emitted
 # file (.mule/project.json, project-manifest.json, pom.xml, mule-artifact.json,

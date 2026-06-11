@@ -1,6 +1,6 @@
 [project]
 name = "build-headless-integration-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "MCP server that renders Mule flow XML as a React Flow canvas inline in Claude Desktop. Companion to the build-headless-integration skill."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -154,6 +154,10 @@ Phase 2 MUST NOT start until Step 5's approval gate passes explicitly.
 - **Connector picks come from RDS only.** `search_connectors.sh` queries `GET /v1/connectors` for the live catalog. Never invent a name. If the search returns zero matches, tell the user that connector isn't loaded on RDS — do not silently fall back to a different connector or to HTTP.
 - **The flow XML is the agent's responsibility.** Read the digest from `tmp/connector-metadata/<nick>.json`, then write `<projectDir>/src/main/mule/<projectName>.xml` directly with the `Write` tool. Use the prefix and namespace recorded in the digest. Do not invent operation names or required parameters — they're listed in the digest.
 - **No anypoint-cli-v4 calls.** This skill never shells out to it. If you find yourself reaching for `anypoint-cli-v4 dx`, you're on the wrong skill — switch to `build-mule-integration`.
+- **Trust phase1.sh's stdout — do not re-Read `tmp/connector-metadata/*.json` files.** `phase1.sh` prints a complete combined digest in one block: every operation, source, connection provider, error type, and required-param set for every picked connector. After phase1.sh completes, the next move is Step 3 (trigger ladder), NOT a series of `Read tmp/connector-metadata/twilio-sendMessage.json` chips. Re-reading per-op files individually is the chip-count smell that bloats Phase 1 from ~1 chip to 10+. Use `jq` against an on-disk file ONLY when you need a specific field that the printed digest didn't include (rare — usually `parameterModels` for an obscure config).
+- **Project files come from `create_versionless_project.sh` — never inline-emit them yourself.** Phase 2 has exactly one writer for `.mule/project.json`, `project-manifest.json`, `pom.xml`, `mule-artifact.json`, and `src/main/resources/config.yaml`: the script. Do NOT `Write` or `cat <<EOF >config.yaml` from a Bash chip — even when you know the exact contents the script would emit. Bare-name writes from a cwd of `$WS_DIR` land at `$WS_DIR/config.yaml` instead of `$WS_DIR/<projectName>/src/main/resources/config.yaml`, polluting the workspace root with orphan files. The agent's only direct write in Phase 2 is the flow XML at `$WS_DIR/<projectName>/src/main/mule/<projectName>.xml`. Everything else is the script's job.
+- **Never `mkdir` paths under `$WS_DIR` directly.** `create_versionless_project.sh` creates the full directory tree the project needs (`.mule/`, `src/main/mule/`, `src/main/resources/`, `src/test/mule/`). If you find yourself running `mkdir services/` or any other bare-name directory, you're working around the script — stop and call the script with the right `<projectDir>` instead.
+- **Java connector forms ≠ Go connector forms — read the digest, not training-time intuition.** The Mule 4 Java connectors (what `build-mule-integration` produces) and the Go bundles loaded on RDS often model the same operation with different XML shapes. Concrete examples: the Java `salesforce:query` carries SOQL as a child element `<salesforce:salesforce-query>...</salesforce:salesforce-query>`; the Go connector carries it as the attribute `soql="..."`. The Java HTTP connector nests `<http:listener-connection>` inside `<http:listener-config>`; the Go HTTP connector uses `<http:listener>` directly under `<http:listener-config>` (and ALSO has a `<http:listener>` source on the flow — same element name, different role, both legitimate). The digest's `dslElementNames`, `parameterGroups[].parameters[].name`, and per-parameter `required` flag are the only authoritative source. If you find yourself reaching for the build-mule-integration reference XML or the salesforce-accounts-to-twilio testdata to "look up the right shape", stop — those are Java forms and won't match the Go descriptor. Validator Check 6 catches this drift at Step 6.5; respect it.
 
 ---
 
@@ -183,16 +187,19 @@ bash "$SKILL/scripts/phase1.sh" <nick1>:<connector1> [<nick2>:<connector2> ...]
 **Example:**
 ```bash
 bash "$SKILL/scripts/phase1.sh" sfdc:salesforce twilio:twilio
+# → also picks + describes http (defensive auto-add — see below)
 ```
 
 Each pair binds a nickname (used as the local handle in the design spec + `config.yaml`) to a connector loaded on RDS.
 
+**Defensive `http` auto-add.** `phase1.sh` always picks + describes the `http` connector unless you pass `--no-http`. Most realistic headless integrations need it: HTTP listener triggers, outbound REST calls, and OAuth callback paths all require the `http` connector's `<http:listener-config>` / `<http:listener>` / `<http:request>` elements. Including it in Phase 1 means Step 3's `sources[]` view already lists `http:listener` as an option without a separate "now also pick http" round-trip. Pass `--no-http` only when you're sure the integration touches no HTTP at all (rare).
+
 What `phase1.sh` does in one go:
 
 1. Validates prereqs (Node 18+, jq, curl, ACB install) and brings up the real Go RDS via `ensure_rds.sh` if not already running.
-2. Picks each connector — fetches its descriptor (cache → RDS), records `tmp/connector-choices/<nick>.json` with prefix/namespace/schemaLocation.
+2. Picks each connector (including `http` unless `--no-http`) — fetches its descriptor (cache → RDS), records `tmp/connector-choices/<nick>.json` with prefix/namespace/schemaLocation.
 3. Describes each connector — emits the rich digest to `tmp/connector-metadata/<nick>-digest.json` and the per-shape file family (flat reference, per-op, per-config, error whitelists).
-4. Prints a combined digest to stdout: every operation, source, connection provider, and config element for every picked connector. The agent reads this single block to plan Steps 3–5.
+4. Prints a combined digest to stdout: every operation, source, connection provider, and config element for every picked connector. The agent reads this single block to plan Steps 3–5. **This stdout block is the only digest the agent should be reading** — see "Trust phase1.sh's stdout" in the workflow-wide discipline.
 
 **On failure:** the script aborts at the first failing step (set -e). Surface the stderr to the user. Common failure modes:
 - Docker not running → RDS can't auto-bring-up. Tell the user to start Docker Desktop.
@@ -253,7 +260,14 @@ Take this path when:
 - The prompt explicitly says "expose endpoint", "receive HTTP", "webhook at /path", "REST API", "trigger on demand", AND
 - No connector source in scope is a webhook-style receiver.
 
-Use `<http:listener>` with the `http` connector loaded on RDS. **Default to this rung over Scheduler** when the prompt has no trigger hint and no connector source matched — Scheduler implies background polling the user didn't ask for, while HTTP Listener is inert until invoked.
+Use `<http:listener>` with the `http` connector — already loaded by `phase1.sh`'s defensive auto-add. **Default to this rung over Scheduler** when the prompt has no trigger hint and no connector source matched — Scheduler implies background polling the user didn't ask for, while HTTP Listener is inert until invoked.
+
+**Element-name reuse — read carefully.** The Go `http` connector's digest shows the name `listener` in two distinct places, and they are NOT in conflict:
+
+1. Under `configurations[].connectionProviders[]` — the **connection element** that goes inside `<http:listener-config>` and carries `host` + `port`. Element name: `listener`. This means the XML reads `<http:listener-config><http:listener host="0.0.0.0" port="8081"/></http:listener-config>` — the connection element is literally `<http:listener>`. (If you've worked with the Java connector, the equivalent there is `<http:listener-connection>`. The Go bundle doesn't have that — `<http:listener>` is the connection element directly.)
+2. Under `configurations[].sources[]` — the **flow source** with required `path` + optional `allowedMethods` + a `config-ref` pointing at the listener-config. Element name: `listener`. This means the XML reads `<http:listener config-ref="HTTP_Listener_Config" path="/foo">...</http:listener>` — same element name, different context (top-level inside a `<flow>`, not inside a `<listener-config>`).
+
+This is **not** "schema-ambiguous" or a descriptor bug. XML disambiguates the two by parent context: a `<listener>` inside `<listener-config>` is the connection element; a `<listener>` inside `<flow>` is the source. Both are valid and must be present for an HTTP-triggered flow. If you find yourself questioning the source's existence because `dslElementNames` lists `listener` only once — stop and re-read `configurations[].sources[]` directly; the source IS there.
 
 #### Rung 4 — Ask the user
 

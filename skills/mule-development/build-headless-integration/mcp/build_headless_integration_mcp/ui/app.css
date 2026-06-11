@@ -43,27 +43,22 @@ body,
   margin: 0;
   font-family: var(--font-sans);
   color: var(--mule-flow-font-color);
-  /* White, not the canvas blue: any vertical space the iframe gives us
-     beyond the canvas-shell (e.g. when the host renders the iframe taller
-     than our min-height of 640px) must NOT visually blend with the canvas
-     itself. Only `.canvas-pane` paints with the canvas blue. */
+  /* White, not the canvas blue: when the iframe is taller than the actual
+     canvas-shell content, the leftover vertical space must NOT visually
+     blend with the canvas itself. Only `.canvas-pane` paints with the
+     canvas blue. */
   background: white;
 }
 
-/* Deliberate, generous default canvas height. The iframe's autoResize hook
-   reports document.body's rendered size to Claude Desktop, which expands
-   the iframe to match. With `height: 100vh` the body would just echo the
-   iframe's current (small) viewport and never grow — so we declare a real
-   min-height instead. Users who want the whole chat pane click the
-   "Fullscreen" button (requestDisplayMode). */
-body {
-  min-height: 640px;
-}
-
+/* Let the iframe size to the natural content height. The autoResize hook
+   reports document.documentElement.scrollHeight to Claude Desktop, which
+   expands the iframe to match. We do NOT enforce a min-height on body or
+   #root — doing so used to reserve hundreds of pixels of empty
+   canvas-blue space below short flows (the canvas-pane paints its full
+   stretched height, so any vertical slack rendered as a "second empty
+   canvas" beneath the actual node chain). The .canvas-shell carries a
+   small floor below for the loading / zero-node states. */
 #root {
-  /* Stretch to fill whatever Claude Desktop gives us, but never below the
-     min-height set above. */
-  min-height: 640px;
   height: 100%;
 }
 
@@ -78,7 +73,11 @@ body {
   display: flex;
   /* Match #root so React Flow's parent has a definite height for layout. */
   height: 100%;
-  min-height: 640px;
+  /* Small floor so the loading state, zero-node placeholder, and one-node
+     flows render at a sensible height. Anything beyond a single node grows
+     the shell naturally via the chain inside .canvas-pane — we no longer
+     stretch to a fixed 640px and paint the slack with canvas blue. */
+  min-height: 220px;
   width: 100%;
   /* A distinct mule-blue bottom border so the canvas reads as a bounded
      surface in BOTH inline and fullscreen modes. Without it the canvas

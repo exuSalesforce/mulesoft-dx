@@ -16,7 +16,18 @@
 #   of perceived latency on a typical run.
 #
 # Usage:
-#   bash "$SKILL/scripts/phase1.sh" <nick>:<connector> [<nick>:<connector> ...]
+#   bash "$SKILL/scripts/phase1.sh" [--no-http] <nick>:<connector> [<nick>:<connector> ...]
+#
+# Flags:
+#   --no-http     Skip the defensive http auto-add. Default: phase1.sh
+#                 picks + describes the http connector alongside the user-
+#                 named systems if it isn't explicitly listed. Most
+#                 realistic headless integrations need it (HTTP listener
+#                 trigger, outbound REST calls, OAuth callback path), and
+#                 adding it here saves a follow-up "pick + describe http"
+#                 chip in the chat. Pass --no-http when you're sure the
+#                 integration won't touch HTTP at all.
+#   -h, --help    Print this usage block.
 #
 # Example:
 #   bash "$SKILL/scripts/phase1.sh" sfdc:salesforce twilio:twilio
@@ -46,23 +57,82 @@ USAGE
 fi
 
 # Validate the pair syntax up front so we fail fast instead of after the
-# RDS bring-up.
+# RDS bring-up. Two flags:
+#   --no-http     skip the defensive http auto-add (default: add http if not requested)
+#   --help, -h    print usage and exit
+#
+# Why http is added by default: every realistic headless integration either
+# (a) uses an HTTP listener trigger or (b) makes outbound HTTP calls or (c)
+# uses an OAuth-family connection provider whose callback path needs an http
+# listener-config. Letting Phase 1 describe http alongside the user-named
+# systems means the agent's `sources[]` view at Step 3 (trigger ladder)
+# already includes http:listener — without a separate "now pick + describe
+# http" round-trip that costs a chat turn. Mirror of the build-mule-integration
+# skill's "HTTP defensive add" (Step 8 there).
+SKIP_HTTP_AUTO=0
 declare -a NICKS=()
 declare -a CONNECTORS=()
-for pair in "$@"; do
-  if [[ "$pair" != *":"* ]]; then
-    echo "phase1.sh: bad pair '$pair' (expected <nick>:<connector>)" >&2
-    exit 2
-  fi
-  nick="${pair%%:*}"
-  conn="${pair#*:}"
-  if [[ -z "$nick" || -z "$conn" ]]; then
-    echo "phase1.sh: empty nick or connector in '$pair'" >&2
-    exit 2
-  fi
-  NICKS+=("$nick")
-  CONNECTORS+=("$conn")
+for arg in "$@"; do
+  case "$arg" in
+    --no-http)
+      SKIP_HTTP_AUTO=1
+      ;;
+    -h|--help)
+      cat <<'HELP'
+Usage: phase1.sh [--no-http] <nick>:<connector> [<nick>:<connector> ...]
+
+Brings up RDS, picks each connector, describes each connector, and prints
+a combined digest. Replaces 5+ separate bash chips in the agent's chat.
+
+Flags:
+  --no-http   Skip the defensive http auto-add. By default, phase1.sh
+              also picks + describes the http connector if it isn't
+              explicitly listed (most headless integrations need it).
+  -h, --help  Print this usage block and exit.
+
+Example:
+  bash phase1.sh sfdc:salesforce twilio:twilio
+  → also picks + describes http (defensive add)
+
+  bash phase1.sh --no-http sfdc:salesforce
+  → picks only salesforce
+HELP
+      exit 0
+      ;;
+    -*)
+      echo "phase1.sh: unknown flag '$arg'" >&2
+      echo "Try 'phase1.sh --help' for usage." >&2
+      exit 2
+      ;;
+    *)
+      if [[ "$arg" != *":"* ]]; then
+        echo "phase1.sh: bad pair '$arg' (expected <nick>:<connector>)" >&2
+        exit 2
+      fi
+      nick="${arg%%:*}"
+      conn="${arg#*:}"
+      if [[ -z "$nick" || -z "$conn" ]]; then
+        echo "phase1.sh: empty nick or connector in '$arg'" >&2
+        exit 2
+      fi
+      NICKS+=("$nick")
+      CONNECTORS+=("$conn")
+      ;;
+  esac
 done
+
+# Defensive http auto-add. Opt-out with --no-http.
+if [[ "$SKIP_HTTP_AUTO" -eq 0 ]]; then
+  HAS_HTTP=0
+  for c in "${CONNECTORS[@]}"; do
+    if [[ "$c" == "http" ]]; then HAS_HTTP=1; break; fi
+  done
+  if [[ "$HAS_HTTP" -eq 0 ]]; then
+    NICKS+=("http")
+    CONNECTORS+=("http")
+    AUTO_HTTP_ADDED=1
+  fi
+fi
 
 step() {
   printf '\n=== %s ===\n' "$1"
@@ -127,14 +197,25 @@ for i in "${!NICKS[@]}"; do
   nick="${NICKS[$i]}"
   conn="${CONNECTORS[$i]}"
   prefix="$(jq -r '.prefix' "$TMP_DIR/connector-choices/$nick.json")"
-  printf '  %-12s -> %-30s (prefix: %s)\n' "$nick" "$conn" "$prefix"
+  marker=""
+  if [[ "$conn" == "http" && "${AUTO_HTTP_ADDED:-0}" -eq 1 ]]; then
+    marker=" [auto-added; use --no-http to skip]"
+  fi
+  printf '  %-12s -> %-30s (prefix: %s)%s\n' "$nick" "$conn" "$prefix" "$marker"
 done
 
 cat <<'EOF'
 
 Next steps for the agent:
-  - Step 6: pick a trigger from the digest (look at "sources:" lines).
-  - Step 7: pick a connection provider per connector ("connection providers:").
-  - Step 8: present the Technical Design Summary and wait for user approval.
-  - Step 9 (after approval): commit_design_spec + create_versionless_project.
+  - Step 3: pick a trigger from the digest (look at "sources:" lines).
+  - Step 4: pick a connection provider per connector ("connection providers:").
+  - Step 5: present the Technical Design Summary and wait for user approval.
+  - Step 6 (after approval): commit_design_spec + create_versionless_project.
+
+Reminder for the agent:
+  The output above is the digest you need for Steps 3-5. Do NOT re-Read
+  tmp/connector-metadata/*.json files individually — every operation,
+  source, and connection provider for every picked connector is already
+  in this stdout block. Use jq against the on-disk file ONLY when you
+  need a field that the printed digest didn't include (rare).
 EOF
