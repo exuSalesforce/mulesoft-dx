@@ -4,18 +4,21 @@ Main portal generator orchestrator.
 Coordinates discovery, rendering, and file output to produce the complete portal.
 """
 
+import html as _html
 import json
 import os
 import shutil
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List
+from urllib.parse import quote as _urlquote
 
 from .discovery import discover_apis, discover_terraform, calculate_stats
 from .builders.tree_builder import build_operation_tree
 from .assets import get_css, get_js, get_jsonpath_js
 from .template_env import create_env, _skill_title
 from .mulesoft_chrome import fetch_mulesoft_chrome
+from .utils import hash_asset_filename
 
 _SKILL_SKIP_DIRS = {'node_modules', '__pycache__', '.git', '.sdd'}
 _SKILL_SKIP_FILES = {'.DS_Store'}
@@ -41,6 +44,23 @@ def _generate_skill_manifest(source_dir: Path, output_dir: Path) -> None:
     manifest = {'files': files}
     with open(output_dir / 'manifest.json', 'w', encoding='utf-8') as mf:
         json.dump(manifest, mf)
+
+
+def _resolve_prose_only(skill: Dict) -> bool:
+    """Return True for prose skills, False for jtbd. Fail loud on an unresolved type.
+
+    Skill type is the single source of truth (resolved by discovery via
+    _resolve_skill_type + skills-metadata.yaml; enforced by validate_skills.py
+    R6). The generator must not assume a default for an unresolved type — that
+    is the silent mis-render this WI removed — so raise instead.
+    """
+    skill_type = skill.get('skill_type')
+    if skill_type not in ('prose', 'jtbd'):
+        raise ValueError(
+            f"Skill '{skill.get('slug', skill.get('name', '?'))}' has unresolved skill_type "
+            f"{skill_type!r}; declare type in skills-metadata.yaml (enforced by validate_skills.py R6)."
+        )
+    return skill_type == 'prose'
 
 
 def _build_api_meta(api: Dict) -> Dict:
@@ -142,8 +162,7 @@ def _render_api_page(args: Dict) -> None:
     api = args['api']
     operation_tree = build_operation_tree(api['operations'])
     html = template.render(
-        css_path='../assets/styles.css',
-        icons_path='../assets/icons',
+        **args['asset_paths'],
         api=api,
         api_meta=_build_api_meta(api),
         op_lookup=args['op_lookup'],
@@ -169,8 +188,7 @@ def _render_mcp_page(args: Dict) -> None:
 
     mcp_meta = args['mcp_meta']
     html = template.render(
-        css_path='../assets/styles.css',
-        icons_path='../assets/icons',
+        **args['asset_paths'],
         mcp=mcp,
         mcp_meta=mcp_meta,
         op_lookup=args['op_lookup'],
@@ -196,8 +214,7 @@ def _render_skill_page(args: Dict) -> None:
     skill_name = _skill_title(skill.get('name', skill['slug']))
 
     html = template.render(
-        css_path='../assets/styles.css',
-        icons_path='../assets/icons',
+        **args['asset_paths'],
         skill=skill,
         skill_name=skill_name,
         api_meta=args['api_meta'],
@@ -227,21 +244,30 @@ def _render_skill_page(args: Dict) -> None:
 
 
 def _render_terraform_page(args: Dict) -> None:
-    """Worker: render a single Terraform provider page (runs in subprocess)."""
+    """Worker: render a single Terraform version page (runs in subprocess)."""
     env = create_env()
     template = env.get_template('terraform_page.html')
     provider = args['provider']
+    version = args['version']
 
     html = template.render(
-        css_path='../assets/styles.css',
-        icons_path='../assets/icons',
+        **args['asset_paths'],
         provider=provider,
-        nav_tree=provider['nav_tree'],
-        nav_tree_by_type=provider['nav_tree_by_type'],
-        home_link='../index.html',
+        version=version,
+        nav_tree=version['nav_tree'],
+        nav_tree_by_type=version['nav_tree_by_type'],
+        version_anchors=args['version_anchors'],
+        home_link='../../index.html',
         build_label=args['build_label'],
         base_url=args['base_url'],
+        chrome=args.get('chrome'),
+        repo_url=args.get('repo_url', ''),
+        repo_branch=args.get('repo_branch', ''),
+        source_path=args.get('source_path', ''),
+        asset_type='terraform',
+        asset_name=provider['name'],
     )
+    Path(args['output_path']).parent.mkdir(parents=True, exist_ok=True)
     Path(args['output_path']).write_text(html, encoding='utf-8')
 
 
@@ -329,6 +355,14 @@ class PortalGenerator:
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
 
+        # Copy fragments directory so that $ref links in api.yaml resolve correctly
+        source_fragments = self.repo_root / 'fragments'
+        if source_fragments.is_dir():
+            dest_fragments = self.output_dir / 'fragments'
+            if dest_fragments.exists():
+                shutil.rmtree(dest_fragments)
+            shutil.copytree(source_fragments, dest_fragments)
+
         # Fetch MuleSoft header and footer
         print(f"\n🌐 Fetching MuleSoft header and footer...")
         try:
@@ -344,6 +378,11 @@ class PortalGenerator:
 
         # Generate files
         print(f"\n📝 Generating portal files (workers={self.workers})...")
+        self._css_filename = self._generate_css()
+        self._js_filename, self._jsonpath_filename = self._generate_js()
+        self._generate_404()
+        self._generate_500()
+        self._generate_error_page()
         self._generate_homepage()
         self._generate_detail_pages_parallel()
         self._generate_registry()
@@ -352,8 +391,6 @@ class PortalGenerator:
         self._generate_llms_txt()
         self._generate_markdown_pages()
         self._generate_headers()
-        self._generate_css()
-        self._generate_js()
         self._copy_images()
 
         print("\n" + "=" * 60)
@@ -362,6 +399,42 @@ class PortalGenerator:
         print(f"🌐 Open: {self.output_dir}/index.html")
         print(f"📋 Registry: {self.output_dir}/registry.json")
         print(f"🤖 Agent guide: {self.output_dir}/AGENTS.md")
+
+    def _asset_paths(self, depth: int = 1) -> dict:
+        """Return template variables for hashed asset paths at the given directory depth."""
+        prefix = '../' * depth if depth > 0 else ''
+        return {
+            'css_path': f"{prefix}assets/{self._css_filename}",
+            'icons_path': f"{prefix}assets/icons",
+            'portal_js_path': f"{prefix}assets/{self._js_filename}",
+            'jsonpath_js_path': f"{prefix}assets/{self._jsonpath_filename}",
+        }
+
+    def _generate_static_error_page(self, template_name: str, output_name: str) -> None:
+        """Render a static error page template to output_dir/output_name."""
+        template = self.env.get_template(template_name)
+        html = template.render(
+            **self._asset_paths(0),
+            build_label=self.build_label,
+            base_url=self.base_url,
+            chrome={k: v for k, v in self.chrome.items() if k != 'header'} if self.chrome else None,
+        )
+        (self.output_dir / output_name).write_text(html, encoding='utf-8')
+
+    def _generate_404(self):
+        """Generate 404.html error page."""
+        print("  ✓ Generating 404 page...")
+        self._generate_static_error_page('404.html', '404.html')
+
+    def _generate_500(self):
+        """Generate 500.html error page."""
+        print("  ✓ Generating 500 page...")
+        self._generate_static_error_page('500.html', '500.html')
+
+    def _generate_error_page(self):
+        """Generate error.html generic fallback error page."""
+        print("  ✓ Generating generic error page...")
+        self._generate_static_error_page('error.html', 'error.html')
 
     def _generate_homepage(self):
         """Generate index.html"""
@@ -396,8 +469,7 @@ class PortalGenerator:
         all_items.sort(key=lambda x: x.get('name', '').lower())
 
         html = template.render(
-            css_path='assets/styles.css',
-            icons_path='assets/icons',
+            **self._asset_paths(0),
             apis=self.public_apis,
             mcp_servers=self.public_mcps,
             stats=self.stats,
@@ -467,6 +539,7 @@ class PortalGenerator:
                 'chrome': chrome,
                 'repo_url': self.REPO_URL,
                 'repo_branch': self.REPO_BRANCH,
+                'asset_paths': self._asset_paths(1),
                 'output_path': str(self.output_dir / 'apis' / f"{api['slug']}.html"),
             }))
 
@@ -490,6 +563,7 @@ class PortalGenerator:
                     'chrome': chrome,
                     'repo_url': self.REPO_URL,
                     'repo_branch': self.REPO_BRANCH,
+                    'asset_paths': self._asset_paths(1),
                     'output_path': str(self.output_dir / 'mcps' / f"{mcp['slug']}.html"),
                 }))
 
@@ -504,15 +578,7 @@ class PortalGenerator:
             first_api = api_by_slug.get(api_refs[0]) if api_refs else None
             api_meta = _build_api_meta(first_api) if first_api else {'servers': [], 'securitySchemes': {}, 'security': []}
 
-            skill_type = skill.get('skill_type')
-            if skill_type:
-                prose_only = (skill_type == 'prose')
-            else:
-                has_api_steps = any(
-                    s.get('yaml') and s['yaml'].get('api')
-                    for s in skill.get('step_details', [])
-                )
-                prose_only = not has_api_steps
+            prose_only = _resolve_prose_only(skill)
 
             linked_apis = []
             for api_slug in api_refs:
@@ -540,22 +606,37 @@ class PortalGenerator:
                 'chrome': chrome,
                 'repo_url': self.REPO_URL,
                 'repo_branch': self.REPO_BRANCH,
+                'asset_paths': self._asset_paths(1),
                 'output_path': str(self.output_dir / 'skills' / f"{skill['slug']}.html"),
                 'skill_source_dir': str(skill_source_dir) if skill_source_dir.is_dir() else None,
                 'manifest_output_dir': str(self.output_dir / 'skills' / skill_rel),
             }))
 
-        # Terraform pages
+        # Terraform pages — one task per (provider, version)
         if self.terraform_providers:
-            total_docs = sum(p['doc_count'] for p in self.terraform_providers)
-            print(f"  ✓ Queuing {len(self.terraform_providers)} Terraform provider page(s) ({total_docs} docs)...")
+            version_count = sum(len(p['versions']) for p in self.terraform_providers)
+            total_docs = sum(
+                sum(v['doc_count'] for v in p['versions']) for p in self.terraform_providers
+            )
+            print(f"  ✓ Queuing {version_count} Terraform page(s) "
+                  f"across {len(self.terraform_providers)} provider(s) ({total_docs} docs)...")
             for provider in self.terraform_providers:
-                tasks.append((_render_terraform_page, {
-                    'provider': provider,
-                    'build_label': self.build_label,
-                    'base_url': self.base_url,
-                    'output_path': str(self.output_dir / 'terraform' / f"{provider['slug']}.html"),
-                }))
+                version_anchors = self._build_version_anchors(provider)
+                provider_dir = self.output_dir / 'terraform' / provider['slug']
+                for version in provider['versions']:
+                    tasks.append((_render_terraform_page, {
+                        'provider': provider,
+                        'version': version,
+                        'version_anchors': version_anchors,
+                        'build_label': self.build_label,
+                        'base_url': self.base_url,
+                        'output_path': str(provider_dir / f"{version['version']}.html"),
+                        'chrome': {'footer': self.chrome.get('footer', ''), 'dependencies': self.chrome.get('dependencies', '')} if self.chrome else None,
+                        'repo_url': self.REPO_URL,
+                        'repo_branch': self.REPO_BRANCH,
+                        'asset_paths': self._asset_paths(2),
+                        'source_path': f"terraform/{provider['slug']}/{version['version']}",
+                    }))
 
         # Execute all tasks in parallel
         total = len(tasks)
@@ -572,6 +653,24 @@ class PortalGenerator:
                     raise exc
         print(f"  ✓ All {total} pages rendered.")
 
+        # Terraform redirect stubs (lightweight, not worth parallelizing)
+        if self.terraform_providers:
+            for provider in self.terraform_providers:
+                provider_dir = self.output_dir / 'terraform' / provider['slug']
+                provider_dir.mkdir(parents=True, exist_ok=True)
+                # index.html — meta-refresh to latest version
+                latest_url = f"{provider['latest_version']}.html"
+                (provider_dir / 'index.html').write_text(
+                    self._render_redirect_stub(latest_url, label=f"{provider['name']} {provider['latest_version']}"),
+                    encoding='utf-8',
+                )
+                # Legacy <slug>.html — redirect to versioned path
+                legacy_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
+                legacy_path.write_text(
+                    self._render_redirect_stub(f"{provider['slug']}/index.html", label=provider['name']),
+                    encoding='utf-8',
+                )
+
     def _generate_detail_pages(self):
         """Generate individual API pages (public APIs only) - sequential fallback."""
         print(f"  ✓ Generating {len(self.public_apis)} API detail pages...")
@@ -583,8 +682,7 @@ class PortalGenerator:
             api_meta = _build_api_meta(api)
             operation_tree = build_operation_tree(api['operations'])
             html = template.render(
-                css_path='../assets/styles.css',
-                icons_path='../assets/icons',
+                **self._asset_paths(1),
                 api=api,
                 api_meta=api_meta,
                 op_lookup=op_lookup,
@@ -676,8 +774,7 @@ class PortalGenerator:
             mcp_lookup = {s: full_mcp_lookup[s] for s in mcp_refs if s in full_mcp_lookup}
 
             html = template.render(
-                css_path='../assets/styles.css',
-                icons_path='../assets/icons',
+                **self._asset_paths(1),
                 mcp=mcp,
                 mcp_meta=mcp_meta,
                 op_lookup=op_lookup,
@@ -718,15 +815,7 @@ class PortalGenerator:
             first_api = api_by_slug.get(api_refs[0]) if api_refs else None
             api_meta = _build_api_meta(first_api) if first_api else {'servers': [], 'securitySchemes': {}, 'security': []}
 
-            skill_type = skill.get('skill_type')
-            if skill_type:
-                prose_only = (skill_type == 'prose')
-            else:
-                has_api_steps = any(
-                    s.get('yaml') and s['yaml'].get('api')
-                    for s in skill.get('step_details', [])
-                )
-                prose_only = not has_api_steps
+            prose_only = _resolve_prose_only(skill)
 
             # Build linked APIs list for sidebar
             linked_apis = []
@@ -741,8 +830,7 @@ class PortalGenerator:
                     })
 
             html = template.render(
-                css_path='../assets/styles.css',
-                icons_path='../assets/icons',
+                **self._asset_paths(1),
                 skill=skill,
                 skill_name=skill_name,
                 api_meta=api_meta,
@@ -787,32 +875,45 @@ class PortalGenerator:
             return f"---{parts[1]}---\n\n{preamble}\n{parts[2]}"
         return preamble + "\n" + content
 
-    def _generate_terraform_pages(self):
-        """Generate Terraform provider documentation pages (one page per provider)."""
-        if not self.terraform_providers:
-            return
-        total_docs = sum(p['doc_count'] for p in self.terraform_providers)
-        print(f"  ✓ Generating {len(self.terraform_providers)} Terraform provider page(s) ({total_docs} docs)...")
 
-        template = self.env.get_template('terraform_page.html')
+    @staticmethod
+    def _build_version_anchors(provider: Dict) -> Dict[str, List[str]]:
+        """Map version -> list of doc anchors available in that version."""
+        return {
+            v['version']: [d['slug'] for d in v['docs']]
+            for v in provider['versions']
+        }
 
-        for provider in self.terraform_providers:
-            nav_tree = provider['nav_tree']
-            nav_tree_by_type = provider['nav_tree_by_type']
+    @staticmethod
+    def _render_redirect_stub(target_relative_url: str, label: str) -> str:
+        """Tiny static-site-friendly redirect page.
 
-            html = template.render(
-                css_path='../assets/styles.css',
-                icons_path='../assets/icons',
-                provider=provider,
-                nav_tree=nav_tree,
-                nav_tree_by_type=nav_tree_by_type,
-                home_link='../index.html',
-                build_label=self.build_label,
-                base_url=self.base_url,
-            )
-            output_path = self.output_dir / 'terraform' / f"{provider['slug']}.html"
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(html)
+        Forwards via inline JS so ``location.hash`` (e.g. ``#doc-foo``) is
+        preserved, with a ``<meta http-equiv="refresh">`` fallback for clients
+        that block scripts. Both inputs are escaped: ``label`` via
+        :func:`html.escape`, ``target_relative_url`` via
+        :func:`urllib.parse.quote` for attribute-value safety.
+        """
+        url = _urlquote(target_relative_url, safe="/.-#?=&")
+        label_safe = _html.escape(label, quote=True)
+        url_attr = _html.escape(url, quote=True)
+        # JSON-encode the URL for safe injection into the inline script.
+        url_js = json.dumps(url)
+        return (
+            f"<!doctype html>\n"
+            f"<html lang=\"en\"><head>"
+            f"<meta charset=\"utf-8\">"
+            f"<meta http-equiv=\"refresh\" content=\"0; url={url_attr}\">"
+            f"<title>Redirecting to {label_safe}</title>"
+            f"<link rel=\"canonical\" href=\"{url_attr}\">"
+            f"<script>"
+            f"(function(){{var t={url_js};"
+            f"location.replace(t+(location.hash||''));}})();"
+            f"</script>"
+            f"</head><body>"
+            f"<noscript><a href=\"{url_attr}\">Continue to {label_safe}</a></noscript>"
+            f"</body></html>\n"
+        )
 
     def _generate_registry(self):
         """Generate registry.json - a document registry for APIs, Skills, and Schemas."""
@@ -1096,22 +1197,31 @@ class PortalGenerator:
 """
         (self.output_dir / '_headers').write_text(headers, encoding='utf-8')
 
-    def _generate_css(self):
-        """Generate styles.css"""
+    def _generate_css(self) -> str:
+        """Generate styles.css with content-hashed filename."""
         print("  ✓ Generating CSS...")
-        output_path = self.output_dir / 'assets' / 'styles.css'
+        content = get_css()
+        hashed_name = hash_asset_filename('styles.css', content)
+        output_path = self.output_dir / 'assets' / hashed_name
         with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(get_css())
+            f.write(content)
+        return hashed_name
 
-    def _generate_js(self):
-        """Generate portal.js and jsonpath-plus library"""
+    def _generate_js(self) -> tuple:
+        """Generate portal.js and jsonpath-plus library with content-hashed filenames."""
         print("  ✓ Generating JavaScript...")
-        output_path = self.output_dir / 'assets' / 'portal.js'
+        js_content = get_js()
+        js_name = hash_asset_filename('portal.js', js_content)
+        output_path = self.output_dir / 'assets' / js_name
         with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(get_js())
-        jsonpath_path = self.output_dir / 'assets' / 'jsonpath-plus.min.js'
+            f.write(js_content)
+
+        jsonpath_content = get_jsonpath_js()
+        jsonpath_name = hash_asset_filename('jsonpath-plus.min.js', jsonpath_content)
+        jsonpath_path = self.output_dir / 'assets' / jsonpath_name
         with open(jsonpath_path, 'w', encoding='utf-8') as f:
-            f.write(get_jsonpath_js())
+            f.write(jsonpath_content)
+        return (js_name, jsonpath_name)
 
     def _copy_images(self):
         
