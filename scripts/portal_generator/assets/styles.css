@@ -797,6 +797,38 @@ code {
     content: url('../assets/icons/terraform-filter-icon-active.svg');
 }
 
+/* Catalog empty state (home catalog — no cards match filter/search) */
+.catalog-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: var(--space-2xl) var(--space-md);
+    gap: var(--space-xs);
+}
+
+.catalog-empty-state img {
+    width: 120px;
+    height: auto;
+    margin-bottom: var(--space-sm);
+}
+
+.catalog-empty-title {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+}
+
+.catalog-empty-hint {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--font-size-3);
+    color: var(--color-text-secondary);
+}
+
 /* Sidebar empty state (terraform search) */
 .sidebar-empty-state {
     display: flex;
