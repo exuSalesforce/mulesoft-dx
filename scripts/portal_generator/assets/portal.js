@@ -1448,7 +1448,16 @@ function filterByTags() {
     });
 
     // Update results count and type
-    updateResultsCount(visibleApis + visibleMcps + visibleSkills + visibleTerraform, selectedType);
+    const totalVisible = visibleApis + visibleMcps + visibleSkills + visibleTerraform;
+    updateResultsCount(totalVisible, selectedType);
+
+    // Toggle empty state when no cards match
+    const catalogGrid = document.getElementById('catalogGrid');
+    const catalogEmptyState = document.getElementById('catalogEmptyState');
+    if (catalogGrid && catalogEmptyState) {
+        catalogGrid.style.display = totalVisible === 0 ? 'none' : '';
+        catalogEmptyState.style.display = totalVisible === 0 ? '' : 'none';
+    }
 
     // Highlight matched terms on visible cards
     applyTagHighlights();
