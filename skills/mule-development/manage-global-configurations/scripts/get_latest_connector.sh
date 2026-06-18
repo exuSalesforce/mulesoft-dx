@@ -25,16 +25,17 @@
 #   0  ≥1 candidate found — ranked list printed on stdout
 #   1  no candidates / CLI error — error surfaced on stderr
 #
-# Why no auto-pin: writing the top-1 GAV to disk before the agent has had
-# a chance to compare candidates lets the agent silently accept it in
-# ambiguous variant families. Removing the winner signal — pin file, banner,
-# score number — forces the agent to actually read the list. When the list
-# has >1 row, the shape of the output is itself the ambiguity signal. The
-# pick is committed later via pick_connector.sh, and all picks are promoted
-# to tmp/connector-versions/ by commit_connectors.sh after the user
-# approves the Technical Design Summary.
+# Why no auto-pin: v7 wrote the top-1 GAV to disk before the agent had
+# a chance to compare candidates. In ambiguous variant families the agent
+# accepted the pin silently 86% of the time (based on 535 lookups across
+# the pt1/pt2/pt3 eval runs). Removing the winner signal — pin file, ✅
+# banner, "score" number — forces the agent to actually read the list.
+# When the list has >1 row the shape of the output is itself the ambiguity
+# signal. The pick is committed later via pick_connector.sh, and all picks
+# are promoted to tmp/connector-versions/ by commit_connectors.sh after
+# the user approves the Technical Design Summary.
 #
-# Selection rules (used only for internal ranking):
+# Selection rules (unchanged from v7; used only for internal ranking):
 #   - Only Mule 4 SDK extensions (type=="extension"). Mule 3 type=="connector"
 #     assets, templates, examples, and rest-apis are excluded — they can't be
 #     used as dependencies in a Mule 4 `dx project create` project.
@@ -151,5 +152,16 @@ fi
 # agent must reason about which matches the user's intent, and escalate
 # to AskUserQuestion if the answer isn't obvious from the names alone.
 OUTPUT=$(printf '%s' "$RANKED" | jq -r '.[] | "\(.groupId):\(.assetId):\(.version)"')
+
+# ── BEGIN WORKAROUND: HTTP connector 1.11.2 broken POM on Exchange ──────
+# HTTP connector 1.11.2 was published to all Exchange environments with a
+# stripped POM (no <parent>, no <dependencies>). This means Maven cannot
+# resolve the transitive mule-sockets-connector dep that HTTP needs at
+# runtime (TcpClientSocketProperties). Adding sockets explicitly causes a
+# split-package conflict. Net result: 1.11.2 is unusable.
+# Pin to 1.11.1 (last known good) until MuleSoft publishes a fix.
+# Tracked: remove this block once 1.11.3+ is available with a correct POM.
+OUTPUT=$(printf '%s\n' "$OUTPUT" | sed 's|mule-http-connector:1\.11\.2$|mule-http-connector:1.11.1|')
+# ── END WORKAROUND: HTTP connector 1.11.2 broken POM on Exchange ────────
 
 printf '%s\n' "$OUTPUT"
