@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/mulesoft/mulesoft-dx/blob/master/docs/schemas/owner.schema.json",
+  "title": "Asset Ownership Schema",
+  "description": "Defines the ownership metadata for APIs, skills, and Terraform providers in mulesoft-dx.",
+  "type": "object",
+  "required": ["team", "slack"],
+  "additionalProperties": false,
+  "properties": {
+    "team": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name of the team responsible for this asset."
+    },
+    "slack": {
+      "type": "string",
+      "pattern": "^#[a-z0-9][a-z0-9_-]*$",
+      "description": "Slack channel for bug reports and notifications (e.g. #api-cm-bugs)."
+    },
+    "gus_team": {
+      "type": "string",
+      "minLength": 1,
+      "description": "GUS team name used to auto-create work items for reported bugs."
+    },
+    "github_label": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "GitHub label applied to issues routed to this team (e.g. team-api-cm)."
+    }
+  }
+}
