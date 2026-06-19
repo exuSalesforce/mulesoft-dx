@@ -1,4 +1,3 @@
-team: "Dev Portal"
-slack: "#dev-portal-bugs"
-gus_team: "Dev Portal"
-github_label: "team-dev-portal"
+team: "API Experience Hub"
+slack: "#api-exp-hub-eng"
+github_label: "team-api-exp-hub"
