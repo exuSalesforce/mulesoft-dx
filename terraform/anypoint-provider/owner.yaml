@@ -1,4 +1,3 @@
 team: "Terraform Provider"
 slack: "#terraform-provider-bugs"
 gus_team: "Terraform Provider"
-github_label: "team-terraform"

@@ -21,11 +21,6 @@
       "type": "string",
       "minLength": 1,
       "description": "GUS team name used to auto-create work items for reported bugs."
-    },
-    "github_label": {
-      "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9_-]*$",
-      "description": "GitHub label applied to issues routed to this team (e.g. team-api-cm)."
     }
   }
 }

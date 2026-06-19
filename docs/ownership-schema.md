@@ -11,7 +11,6 @@ Every asset in this repository (API specs, skills, and Terraform providers) must
 | `team` | yes | string | Human-readable team name |
 | `slack` | yes | string | Slack channel for bug notifications (must start with `#`) |
 | `gus_team` | no | string | GUS team name for auto-creating work items |
-| `github_label` | no | string | GitHub label applied to routed issues |
 
 ## File placement
 
@@ -62,13 +61,12 @@ team: "API Community Manager"
 slack: "#api-cm-bugs"
 ```
 
-### Full
+### With GUS team
 
 ```yaml
 team: "API Community Manager"
 slack: "#api-cm-bugs"
 gus_team: "API Community Manager"
-github_label: "team-api-cm"
 ```
 
 ## Validation
