@@ -7,7 +7,7 @@
 #   make report                - Generate summary report
 #   make help                  - Show this help message
 
-.PHONY: help validate-all validate-all-governed validate-api clean report generate-portal serve-portal serve-proxy deploy-test deploy-prod test-portal validate-jtbd validate-xorigin validate-descriptions validate-mcp-server validate-ownership validate-portal install-hooks uninstall-hooks check-hooks pre-commit-hook pre-push-hook
+.PHONY: help validate-all validate-all-governed validate-api clean report generate-portal serve-portal serve-proxy deploy-test deploy-prod test-portal validate-jtbd validate-xorigin validate-descriptions validate-mcp-server validate-portal install-hooks uninstall-hooks check-hooks pre-commit-hook pre-push-hook
 
 # Colors for output
 RED := \033[0;31m
@@ -56,7 +56,6 @@ help:
 	@echo "  $(YELLOW)make validate-xorigin$(NC)      - Validate x-origin annotations across APIs"
 	@echo "  $(YELLOW)make validate-jtbd$(NC)         - Validate all JTBD files in skills/ directories"
 	@echo "  $(YELLOW)make validate-mcp-server$(NC)   - Validate MCP server.json files against the MCP registry schema"
-	@echo "  $(YELLOW)make validate-ownership$(NC)    - Validate owner.yaml presence and schema for all assets"
 	@echo "  $(YELLOW)make validate-descriptions$(NC) - Validate API descriptions use imperative format"
 	@echo ""
 	@echo "$(GREEN)Git hooks:$(NC)"
@@ -430,14 +429,6 @@ validate-mcp-server:
 	@python3 scripts/build/validate_mcp_server.py
 	@echo ""
 
-validate-ownership:
-	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
-	@echo "$(CYAN)  Validating Asset Ownership$(NC)"
-	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
-	@echo ""
-	@python3 scripts/build/validate_ownership.py
-	@echo ""
-
 # Validate all JTBD files in skills directories
 validate-jtbd:
 	@echo "$(CYAN)═══════════════════════════════════════════════════════════════════════$(NC)"
@@ -571,12 +562,6 @@ pre-commit-hook:
 	fi; \
 	printf "  validate-skills       ... "; \
 	if python3 scripts/build/validate_skills.py --repo-root . > /dev/null 2>&1; then \
-		echo "$(GREEN)PASS$(NC)"; \
-	else \
-		echo "$(RED)FAIL$(NC)"; failed=1; \
-	fi; \
-	printf "  validate-ownership    ... "; \
-	if python3 scripts/build/validate_ownership.py > /dev/null 2>&1; then \
 		echo "$(GREEN)PASS$(NC)"; \
 	else \
 		echo "$(RED)FAIL$(NC)"; failed=1; \
