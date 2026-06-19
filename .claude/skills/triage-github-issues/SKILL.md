@@ -87,7 +87,7 @@ Read the `team` field:
 
 **2b.4 (Step 2c) — Ask for confirmation before notifying external team:**
 
-Post to `SLACK_CHANNEL`:
+The confirmation message and available replies are the same whether running from a schedule or manually — the only difference is the channel used to ask:
 
 ```
 *GitHub Issue #<number>* may belong to an external team.
@@ -103,6 +103,10 @@ Send them a notification? Reply:
 • *skip* — ignore this issue
 • *edit <message>* — send a custom message instead
 ```
+
+**If SLACK_CHANNEL is provided (schedule):** post the confirmation to `SLACK_CHANNEL` and wait for reply there.
+
+**If no SLACK_CHANNEL (manual run):** show the confirmation in the session output and wait for the user to reply directly in the conversation.
 
 Wait for reply:
 - **send** → post to `owner.slack` channel:
