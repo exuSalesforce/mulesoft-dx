@@ -81,9 +81,9 @@ python3 scripts/build/validate_ownership.py
 make validate-ownership
 ```
 
-The validator:
-- Fails if any `apis/*`, `terraform/*`, or `skills/*` asset is missing `owner.yaml`
-- Fails if any `owner.yaml` does not conform to the schema
+The validator uses a gradual-adoption model:
+- **WARN** (exit 0) if `owner.yaml` is missing — contributors are not blocked
+- **FAIL** (exit 1) if `owner.yaml` exists but is schema-invalid — malformed files are never silently accepted
 - For skills, resolves ownership hierarchically (nearest `owner.yaml` wins)
 
 ## Bug routing pipeline
