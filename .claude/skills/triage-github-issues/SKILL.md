@@ -104,21 +104,36 @@ Send them a notification? Reply:
 • *edit <message>* — send a custom message instead
 ```
 
-**If SLACK_CHANNEL is provided (schedule):** post the confirmation to `SLACK_CHANNEL` and wait for reply there.
+Three execution modes — pick the first that applies:
 
-**If no SLACK_CHANNEL (manual run):** show the confirmation in the session output and wait for the user to reply directly in the conversation.
-
-Wait for reply:
-- **send** → post to `owner.slack` channel:
-  ```
-  🐛 New issue in mulesoft/mulesoft-dx that may involve your team:
-  *<title>* — <url>
-  Reported by: <author>
-  Asset: `<asset-path>`
-  Please triage and respond to the reporter.
-  ```
-- **skip** → log "Skipped external issue #<number>" and move on.
+**Mode A — CU schedule (SLACK_CHANNEL provided, multiturn):**
+Post the confirmation to `SLACK_CHANNEL` and wait for reply there. On reply:
+- **send** → post notification to `owner.slack`.
+- **skip** → log and move on.
 - **edit <message>** → send the custom message to `owner.slack` instead.
+
+**Mode B — Interactive CLI (no SLACK_CHANNEL, user is in the terminal):**
+Print the confirmation in the session output and wait for the user to reply in the conversation. Same reply options as Mode A.
+
+**Mode C — Non-interactive / no multiturn (SLACK_CHANNEL provided but can't wait for reply):**
+Do NOT post to Slack automatically. Instead, print to the terminal:
+
+```
+⚠️  Issue #<number> belongs to an external team — manual action required.
+
+Channel to notify: <owner.slack>
+Suggested message:
+──────────────────────────────────────────────
+🐛 New issue in mulesoft/mulesoft-dx that may involve your team:
+*<title>* — <url>
+Reported by: <author>
+Asset: `<asset-path>`
+Please triage and respond to the reporter.
+──────────────────────────────────────────────
+Post manually or re-run with multiturn enabled.
+```
+
+Then move on to the next issue.
 
 After routing an external issue, move to the next issue. Do NOT continue to Step 3.
 
