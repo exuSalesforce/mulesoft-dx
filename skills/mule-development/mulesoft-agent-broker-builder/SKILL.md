@@ -1,6 +1,6 @@
 ---
 name: mulesoft-agent-broker-builder
-description: Build, edit, validate, publish, and deploy a MuleSoft Agent Broker (Agent Network V2) project end-to-end. Use whenever the user asks to build, create, scaffold, configure, edit, validate, publish, or deploy an Agent Broker, agent network V2, AgentScript, `.agent` file, or `agentNetwork: 2.0.0` project. Do NOT trigger for V1→V2 migration (use the converter skill).
+description: "Build, edit, validate, publish, and deploy a MuleSoft Agent Broker (Agent Network V2) project end-to-end. Use whenever the user asks to build, create, scaffold, configure, edit, validate, publish, or deploy an Agent Broker, agent network V2, AgentScript, `.agent` file, or `agentNetwork: 2.0.0` project. Do NOT trigger for V1→V2 migration (use the converter skill)."
 license: Apache-2.0
 metadata:
   author: mulesoft-agent-broker-team
@@ -39,7 +39,7 @@ See `references/gotchas.md` § "Tooling integration" for the full capability mat
 
 The 6 phases below structure the build experience. Each phase ends with a stop point — wait for the user. Apply each user response immediately (no batch-then-update).
 
-## Step 0: Pre-flight + scaffold
+## Step 1: Pre-flight + scaffold
 
 1. **Detect existing project.** If working folder has `agent-network.yaml` + `exchange.json` + `brokers/`, ask: *"Edit this one, or scaffold new in a sibling folder?"* Default edit (Workflow B).
 2. **Detect schema version.** `schemaVersion: 1.0.0` → route to converter.
@@ -60,7 +60,7 @@ The 6 phases below structure the build experience. Each phase ends with a stop p
    - If neither is available, fall back to writing the canonical scaffold structure directly (`agent-network.yaml` with `agentNetwork: 2.0.0`, `exchange.json` with `"classifier": "agentic-network"`, empty `brokers/`) and tell the user the `groupId`/`organizationId` placeholder needs to be filled in before publish.
 6. **Capture network `info`** for `agent-network.yaml`: ask for `info.label` (required) and `info.description` (optional). Default `info.version` to `1.0.0` unless user provides one. Apply to the scaffold immediately.
 
-## Step 1: Functional Requirements (Phase 1 — be strict)
+## Step 2: Functional Requirements (Phase 1 — be strict)
 
 Make the user articulate what the broker *does* unambiguously. Do not proceed until requirements are concrete.
 
@@ -87,7 +87,7 @@ Present: *"Based on requirements, I've identified these asset needs: [list]. Con
 
 Group results: *"Found in Exchange: [...]. Not found: [...]."* Save preview for Phase 2. Preview only — no file writes yet.
 
-## Step 2: Asset Registration (Phase 2)
+## Step 3: Asset Registration (Phase 2)
 
 Register every required asset in `agent-network.yaml` and `exchange.json`. Sub-steps run sequentially. After each individual asset, ask "Add another?" before continuing.
 
@@ -111,7 +111,7 @@ After registering: ask the user **what `tool_name`** they intend to call (requir
 
 Inline schema requires `info.label` and an interfaces branch — `a2a` for current A2A v1.0 agents, `a2a_v03` for legacy A2A v0.3 agents (Agent Broker stays backward-compatible). The card under `metadata.interfaces.<branch>.card` includes `name`, `description`, `url`, `protocolVersion`, `version`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`. See `references/gotchas.md` § "Registry agents" for the per-branch shape. Ask "Add another?"
 
-## Step 3: Define the Broker (Phase 3 — Agent Script)
+## Step 4: Define the Broker (Phase 3 — Agent Script)
 
 Write the structural skeleton of the `.agent` file. **Brief drafts** of `system.instructions` and `prompt`/`reasoning.instructions` only — Phase 5 refines prose.
 
@@ -137,7 +137,7 @@ For full compile-error rules see `references/gotchas.md` § "Compile-error rules
 
 Update the `brokers` entry in `agent-network.yaml` to reference the new `.agent` file.
 
-## Step 4: Asset Assignment to Graph (Phase 4)
+## Step 5: Asset Assignment to Graph (Phase 4)
 
 Bind actions to nodes. Add an `actions:` entry per asset in the `.agent` file (A2A actions are `target` + `kind` only, no `inputs:`; MCP actions take `target`, `kind`, `tool_name`, optional `inputs:`). Reference from `reasoning.actions` (subagent/orchestrator) or `do: run` (executor).
 
@@ -145,7 +145,7 @@ For binding rules and cap/least-privilege guidance, see `references/gotchas.md`:
 - **§ "Compile-error rules — action invocation"** — A2A bare reference vs `with message =` in executor; MCP `with` rules; `http_headers` implicit.
 - **§ "Stage 4: Bind to nodes"** — 4-action cap, CR-18 least-privilege (irreversible mutations in `executor` + `router`, idempotent updates OK on orchestrator), LLM tier per node, action alias naming.
 
-## Step 5: Instruction Refinement (Phase 5)
+## Step 6: Instruction Refinement (Phase 5)
 
 Make every LLM-powered node's prompt precise, testable, non-conflicting. **One node at a time, never batch.**
 
@@ -162,7 +162,7 @@ For each `generator`/`subagent`/`orchestrator`:
 
 After all nodes refined: **cross-node contradiction test** — does any prompt conflict with another? Resolve with user.
 
-## Step 6: Final Topology Review (Phase 6)
+## Step 7: Final Topology Review (Phase 6)
 
 Cleanup, then validate.
 
@@ -173,7 +173,7 @@ Cleanup, then validate.
 4. Remove orphaned action definitions in `.agent` file.
 5. Remove empty YAML keys (`registry.llms:` with no entries → drop the key).
 
-**Validate.** Run the build command (CLI preferred → MCP fallback → structural checklist below + install hint). Full command syntax in `references/gotchas.md` § "Step 6 — Validate / build".
+**Validate.** Run the build command (CLI preferred → MCP fallback → structural checklist below + install hint). Full command syntax in `references/gotchas.md` § "Step 7 — Validate / build".
 
 **Structural checklist:**
 - Every node reachable from trigger? No orphans.
@@ -194,13 +194,13 @@ Cleanup, then validate.
 
 When clean: *"Project is validated and ready. Want to publish to Exchange and deploy to runtime?"*
 
-## Step 7: Publish (optional)
+## Step 8: Publish (optional)
 
 Only if user wants to. Prereqs: authenticated CLI/MCP context; `exchange.json` has `assetVersion` and no empty `default: ""` for `secret: true` variables.
 
-Run the publish command (CLI preferred → MCP fallback → doc link). Surface published asset URLs from the output. Full command syntax is in `references/gotchas.md` § "Step 7 — Publish".
+Run the publish command (CLI preferred → MCP fallback → doc link). Surface published asset URLs from the output. Full command syntax is in `references/gotchas.md` § "Step 8 — Publish".
 
-## Step 8: Deploy (optional)
+## Step 9: Deploy (optional)
 
 Only if user wants to. Publish must have happened first.
 
@@ -208,7 +208,7 @@ Ask the user: `environmentName`, `targetSpace` (private space), and any deployme
 
 **One-time setup per private space:** if the target space has no gateways yet, run the gateway setup command first.
 
-Run the deploy command (CLI preferred → MCP fallback → doc link). Surface deployment URL/ID. Full command syntax, gateway defaults, and CI flags are in `references/gotchas.md` § "Step 8 — Deploy".
+Run the deploy command (CLI preferred → MCP fallback → doc link). Surface deployment URL/ID. Full command syntax, gateway defaults, and CI flags are in `references/gotchas.md` § "Step 9 — Deploy".
 
 ---
 
@@ -230,7 +230,7 @@ Run the deploy command (CLI preferred → MCP fallback → doc link). Surface de
 5. **Re-evaluate node type if action count changed.** Single action → `subagent`. Multi-action → `orchestrator`. Update `@<oldType>.<id>` references downstream.
 6. **Cap check.** If a node now exceeds 4 actions, propose splitting.
 7. **Update `system.instructions`** to explain how to use the new asset.
-8. Run Step 6 (validate).
+8. Run Step 7 (validate).
 
 ### B.2 — Change graph logic
 
@@ -240,11 +240,11 @@ Edit `.agent`. After any change, walk trigger → every echo and confirm:
 - No node became unreachable or dead-end.
 - No `transition to` in a router's `on_exit` (compile error).
 
-Run Step 6.
+Run Step 7.
 
 ### B.3 — Refine instructions
 
-Edit `.agent` only. Apply Phase 5 contradiction tests. If user pastes a policy doc, transform into numbered routine — don't paste verbatim. Run Step 6.
+Edit `.agent` only. Apply Phase 5 contradiction tests. If user pastes a policy doc, transform into numbered routine — don't paste verbatim. Run Step 7.
 
 ### B.4 — Add or change a connection policy
 
@@ -254,4 +254,4 @@ A policy has **two parts**:
 1. **Definition** — `context.policies.<policyId>`.
 2. **Binding** — referenced from `context.connections.<connId>.policies.outbound` or `brokers.<brokerId>.interfaces.a2a.policies.{inbound,outbound}`. Always reference by id.
 
-For Exchange-published policies: add to `exchange.json.dependencies` first, then bind. Run Step 6.
+For Exchange-published policies: add to `exchange.json.dependencies` first, then bind. Run Step 7.

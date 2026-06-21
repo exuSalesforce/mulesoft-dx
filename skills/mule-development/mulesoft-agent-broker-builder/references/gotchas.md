@@ -508,7 +508,7 @@ Install:
 
 If search returns no results, **don't invent the asset**. Tell the user: *"I didn't find a matching asset in Exchange. Want to provide a custom configuration, or skip?"*
 
-### Step 6 — Validate / build
+### Step 7 — Validate / build
 
 **CLI:** `anypoint-cli-agent-fabric-plugin agent-network project build --path <projectPath>`. Validates configuration via Maven wrapper, generates deployable artifact. Add `--debug` for verbose output. Exits non-zero on validation failure.
 
@@ -520,7 +520,7 @@ Two kinds of fixes:
 
 Loop until clean.
 
-### Step 7 — Publish
+### Step 8 — Publish
 
 **CLI:** `anypoint-cli-agent-fabric-plugin agent-network project publish [--path <projectPath>] [--environment <env>] [--json]`.
 - `assetVersion` is read from `exchange.json` (not a flag).
@@ -532,7 +532,7 @@ Prereqs (both paths): authenticated; valid `exchange.json` (no empty `default: "
 
 After publish, surface published asset URLs.
 
-### Step 8 — Deploy
+### Step 9 — Deploy
 
 **One-time setup per private space:** `anypoint-cli-agent-fabric-plugin agent-network setup gateways --target-space <space>`. Defaults: ingress `agent-network-ingress-gw`, egress `agent-network-egress-gw`, space `agent-network-space`. Skip if gateways already exist.
 
@@ -556,11 +556,11 @@ After deploy, surface URL/ID.
 The skill works in Cursor, standalone Claude Code, Codex — anywhere without MuleSoft tooling. When neither CLI nor MCP is available:
 
 - **Phase 1/2 — search:** Ask the user directly. For Exchange-mode assets, get `groupId`/`assetId`/`version` and (for MCPs) transport kind + tool names. For unknown assets, register an inline placeholder per Case C. Tell the user: *"To search Exchange directly, install `anypoint-cli-v4` (`npm i -g anypoint-cli-v4`)."*
-- **Step 6 — validation:** Run the structural checklist. Tell the user: *"To run MuleSoft's full schema validator, install the CLI plugin (`npm i mulesoft-anypoint-cli-agent-fabric-plugin`) or use the MuleSoft MCP server in your IDE. CI/CD reference: <https://docs.mulesoft.com/anypoint-code-builder/af-build-agent-networks-in-a-ci-cd-environment>."*
-- **Step 7 — publish:** Point at <https://docs.mulesoft.com/anypoint-code-builder/af-publish-agent-network-assets>.
-- **Step 8 — deploy:** Point at <https://docs.mulesoft.com/anypoint-code-builder/af-deploy-agent-network-targets>.
+- **Step 7 — validation:** Run the structural checklist. Tell the user: *"To run MuleSoft's full schema validator, install the CLI plugin (`npm i mulesoft-anypoint-cli-agent-fabric-plugin`) or use the MuleSoft MCP server in your IDE. CI/CD reference: <https://docs.mulesoft.com/anypoint-code-builder/af-build-agent-networks-in-a-ci-cd-environment>."*
+- **Step 8 — publish:** Point at <https://docs.mulesoft.com/anypoint-code-builder/af-publish-agent-network-assets>.
+- **Step 9 — deploy:** Point at <https://docs.mulesoft.com/anypoint-code-builder/af-deploy-agent-network-targets>.
 
-### Step 0 — Scaffold
+### Step 1 — Scaffold
 
 **CLI:** `anypoint-cli-agent-fabric-plugin agent-network project create --name <project-name> --output-dir <parent-dir> --create-dir`. Key flags:
 - `-n, --name=<value>` (required) — project name; becomes default `assetId` (lowercased, hyphenated).
@@ -579,6 +579,6 @@ The CLI writes a starter `agent-network.yaml` (with `agentNetwork: 2.0.0`), `exc
 
 - **Don't call `configure_agent_network_yaml`** — it returns a duplicate prompt template that overlaps with the skill's guided experience.
 - **Don't silently shell out** for auth-bearing actions without confirming env vars are set; never paste credentials inline.
-- **Don't auto-deploy.** Step 6 ends at "validated"; 7 is publish; 8 is deploy. Both opt-in.
+- **Don't auto-deploy.** Step 7 ends at "validated"; 8 is publish; 9 is deploy. Both opt-in.
 - **Don't auto-insert missing assets** when validation reports a dangling reference. Ask user.
 - **Don't fabricate** MCP `tool_name`, asset IDs, or model IDs even when neither CLI nor MCP is present.

@@ -1,6 +1,6 @@
 ---
 name: mulesoft-agent-broker-v1-to-v2-converter
-description: Convert a MuleSoft Agent Network V1 project (`schemaVersion: 1.0.0`) into a V2 project (`agentNetwork: 2.0.0`). Each V1 broker becomes a V2 broker with one orchestrator node — no graph splitting, no prompt rewriting. Use when the user asks to upgrade, convert, migrate, translate, or port an Agent Network / Agent Broker / Daisy planner from V1 to V2, or whenever the working folder contains a V1 `agent-network.yaml`.
+description: "Convert a MuleSoft Agent Network V1 project (`schemaVersion: 1.0.0`) into a V2 project (`agentNetwork: 2.0.0`). Each V1 broker becomes a V2 broker with one orchestrator node — no graph splitting, no prompt rewriting. Use when the user asks to upgrade, convert, migrate, translate, or port an Agent Network / Agent Broker / Daisy planner from V1 to V2, or whenever the working folder contains a V1 `agent-network.yaml`."
 license: Apache-2.0
 metadata:
   author: mulesoft-agent-broker-team
