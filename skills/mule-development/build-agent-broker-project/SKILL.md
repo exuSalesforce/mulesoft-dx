@@ -22,7 +22,7 @@ If the YAML has `schemaVersion: 1.0.0`, this is V1 — stop and route to the con
 
 ## References (read on demand)
 
-- **`references/canonical-example.md`** — The complete IT Help Investigation GA project, sourced from the working GA example in `mulesoft-emu/agent-fabric-specification`. The structural template — when in doubt, copy it.
+- **`references/canonical-example.md`** — A complete, working Agent Network V2 (GA, A2A v1.0) project. The structural template — when in doubt, copy it.
 - **`references/gotchas.md`** — GA syntax rules, compile-error rules, RULE-ASSET-MODE (inline vs Exchange), subagent-vs-orchestrator decision, auth casing, CLI + MCP tooling integration, graceful degradation.
 
 The MuleSoft Agent Network GA docs (Anypoint Code Builder section) are the authoritative reference. The references above cover the gotchas and worked example.

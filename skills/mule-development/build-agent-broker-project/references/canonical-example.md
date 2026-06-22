@@ -1,6 +1,6 @@
 # Canonical Example: IT Help Investigation (GA)
 
-The authoritative GA reference, sourced from `examples/agent-script/stgx-it-investigation-GA-ver` in `mulesoft-emu/agent-fabric-specification` (the working GA project). When in doubt about a field name, value, or indentation, mirror this example exactly.
+A complete, working Agent Network V2 (GA, A2A v1.0) project. When in doubt about a field name, value, or indentation, mirror this example exactly.
 
 GA adopts **A2A v1.0**. Agent Broker is backward-compatible with A2A v0.3 clients via the `a2a_v03` registry branch (shown below for `helpCenterAgent` and `licenseProcurementAgent`, which haven't migrated).
 
