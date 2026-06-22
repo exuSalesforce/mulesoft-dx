@@ -11,6 +11,21 @@ metadata:
 
 Turns a natural-language description of a multi-agent workflow into a complete, validated, deployable Agent Network V2 (GA, A2A v1.0) project. Runs a 6-phase guided experience and adds publish + deploy.
 
+## Communication style (read first)
+
+The user is a builder, not a reviewer of your thinking. Keep output **short and action-oriented**:
+
+- **No reasoning narration.** Don't say "I'm now going to...", "Let me think about...", "First, I'll analyze...", "Based on my understanding...". Just do the thing or ask the next question.
+- **No status preambles.** Don't announce that you're starting Phase 2 or "moving to Step 4" — the user can see the question itself.
+- **No recap of what just happened.** The user wrote the answer one turn ago; they remember.
+- **No "checking my work" monologue.** Validation results are surfaced as a single PASS/FAIL line + the list of issues, not as a play-by-play.
+- **One question or one action per turn.** If multiple things are needed, ask the most blocking one first.
+- **End every phase with a single confirmation question, then stop.** Don't pre-explain what comes next.
+
+Bad: *"Great, now that we've captured the trigger and the three workflow steps, I'll move on to identifying the assets. Based on my analysis of the requirements, I think we need an LLM and two MCP tools. Let me search Exchange for those now..."*
+
+Good: *"Looks like we need an LLM and two MCP tools (ticket-search, jira-update). Search Exchange?"*
+
 **The skill is CLI-first end-to-end.** Validate/publish/deploy use the **Anypoint CLI Agent Fabric plugin** (`mulesoft-anypoint-cli-agent-fabric-plugin`). Exchange asset search uses **Anypoint CLI v4** (`anypoint-cli-v4 exchange asset search`). Both are portable across Claude Code, Cursor, Codex, and Vibes, and match the CI/CD path. MCP tools (`mcp__mulesoft__*`) work as a fallback when present, but no MCP dependency is required.
 
 ## When to use
@@ -26,6 +41,19 @@ If the YAML has `schemaVersion: 1.0.0`, this is V1 — stop and route to the con
 - **`references/gotchas.md`** — GA syntax rules, compile-error rules, RULE-ASSET-MODE (inline vs Exchange), subagent-vs-orchestrator decision, auth casing, CLI + MCP tooling integration, graceful degradation.
 
 The MuleSoft Agent Network GA docs (Anypoint Code Builder section) are the authoritative reference. The references above cover the gotchas and worked example.
+
+## Node-type terminology (phase language ↔ schema keyword)
+
+The 6 phases below use **user-facing names** for node types. The actual `.agent` file uses **schema keywords**. When talking to the user, use the phase name; when writing the file, use the keyword.
+
+| Phase language | `.agent` keyword | What it is |
+|---|---|---|
+| **Reasoning node** | `subagent` | LLM-with-tools. Accepts actions; has built-in HITL. The default LLM-powered node type. |
+| **Orchestrator node** | `orchestrator` | LLM-with-tools, specialized for coordinating **multiple** actions toward a compound goal. Use only when a node has ≥2 actions AND they jointly serve one outcome. |
+| **Generate node** | `generator` | LLM **without** tools. For one-shot generation/summarization/classification with structured output. |
+| (no LLM, deterministic) | `router` | Branching based on a known value. Conditions, not prompts. |
+| (no LLM, side-effect) | `executor` | Runs one tool with known args, sets a variable. |
+| (terminal) | `echo` | Sends the final A2A response to the client. |
 
 ## Tooling integration (CLI-first, MCP-fallback)
 
@@ -60,107 +88,117 @@ The 6 phases below structure the build experience. Each phase ends with a stop p
    - If neither is available, fall back to writing the canonical scaffold structure directly (`agent-network.yaml` with `agentNetwork: 2.0.0`, `exchange.json` with `"classifier": "agentic-network"`, empty `brokers/`) and tell the user the `groupId`/`organizationId` placeholder needs to be filled in before publish.
 6. **Capture network `info`** for `agent-network.yaml`: ask for `info.label` (required) and `info.description` (optional). Default `info.version` to `1.0.0` unless user provides one. Apply to the scaffold immediately.
 
-## Step 2: Functional Requirements (Phase 1 — be strict)
+## Step 2: Functional Requirements (Phase 1)
 
-Make the user articulate what the broker *does* unambiguously. Do not proceed until requirements are concrete.
+**Goal:** Get the user to define functional requirements clearly. **Refuse vague answers** — keep prompting until each item is concrete. The user does not need to use graph terminology; natural-language steps are fine.
 
-Capture (prompt until satisfied):
+Capture, in order:
 
-1. **Trigger:** What event starts this broker? (Almost always A2A `message/send`. Confirm.)
-2. **Workflow steps and branching:** Walk me through each step. *"If X, then Y."*
-3. **Hard constraints:** What is absolutely restricted? These become **router conditions**, not prompt sentences.
-4. **Determinism vs open-ended:** Per step — predictable input → graph branching, or LLM judgment → LLM-powered node.
-5. If user gives a vague answer twice in a row, accept as placeholder, flag, move on.
+1. **Trigger** — what event starts the flow? (Almost always A2A `message/send`. Confirm.)
+2. **Workflow steps & branching logic** — *"If X happens, then strictly do Y."* Walk through each step.
+3. **Hard constraints** — what is absolutely restricted? These become **router conditions**, not prompt sentences.
+4. **Determinism vs. open-endedness** — per step: 100% predictable outcome (graph branching) or LLM reasoning/judgment (LLM-powered node)?
 
-Stop. Summarize and confirm: *"Here's what I have: [...]. Anything missing?"* Stop.
+If the user gives a vague answer twice on the same item, accept a placeholder, flag it, and move on.
 
-After confirmation, **identify required assets**:
-- **LLMs** (always at least one).
-- **Tools** (external capabilities — list capabilities; choice of MCP vs A2A happens in Phase 2).
+End the phase with **one** confirmation: *"Here's what I captured: [bulleted summary]. Anything missing?"* Stop.
 
-Present: *"Based on requirements, I've identified these asset needs: [list]. Confirm or adjust?"* Stop.
+## Step 3: Initial Asset Registration (Phase 2)
 
-**Preview Exchange assets** for each capability. CLI-first:
-- If `anypoint-cli-v4` is installed: run `anypoint-cli-v4 exchange asset search --search "<keywords>"` per capability and inspect results by name/description. The general CLI v4 `--type` flag accepts `connector`, `rest-api`, `soap-api`, `template`, `example`, `custom`, `raml-fragment` — but Agent Fabric–specific types (LLM/MCP/Agent) aren't first-class there yet, so search broadly and filter by asset name. **Always scope to the user's org** with `--organization <orgId>` to hit Private Exchange first; only widen to Public if no match.
-- Else if MCP `search_asset` is available: call with `assetFilters: ["llm"]`, `["mcp"]`, `["agent"]` per capability — these *are* first-class in MCP-tool taxonomy.
-- Else: ask the user for known `groupId`/`assetId`/`version` per asset; treat unknowns as inline placeholders.
+**Goal:** Find the right assets in Exchange and register them in the YAML.
 
-Group results: *"Found in Exchange: [...]. Not found: [...]."* Save preview for Phase 2. Preview only — no file writes yet.
+Asset types: **LLMs** (always ≥1), **MCP tools**, **A2A agents**.
 
-## Step 3: Asset Registration (Phase 2)
+**Asset search order** — for each capability identified in Phase 1:
 
-Register every required asset in `agent-network.yaml` and `exchange.json`. Sub-steps run sequentially. After each individual asset, ask "Add another?" before continuing.
+1. **Private Exchange first.** If `anypoint-cli-v4` is installed: `anypoint-cli-v4 exchange asset search --search "<keywords>" --organization <orgId>`. Else if MCP `search_asset` is available: call with `assetFilters: ["llm"]` / `["mcp"]` / `["agent"]` + `exchangeScope: "Private"`.
+2. **Public Exchange** if no Private match. Drop `--organization` / set `exchangeScope: "Public"`.
+3. **Placeholder** if neither has it. Register as Inline with `${var}`-style URL/auth placeholders the user can fill in later.
 
-**Each asset is in one of two modes** — see `references/gotchas.md` § "RULE-ASSET-MODE" for the full split. Short version:
+**LLM selection is different.** Don't auto-pick. **List the LLM options** found in Exchange (e.g., `claude`, `openai`, `gemini`) and ask: *"Pick one or more, or create a new one."* Stop.
+
+**Review with the user** before writing: *"Selected: [list]. Confirm?"* Stop.
+
+**Register every confirmed asset** in `agent-network.yaml` + `exchange.json`. Each asset is in one of two modes — see `references/gotchas.md` § "RULE-ASSET-MODE":
+
 - **Inline** (asset NOT in Exchange): registry entry + `context.connections` with `ref.name`.
 - **Exchange** (asset already published): `exchange.json.dependencies` + `context.connections` with `ref.name` AND `ref.namespace`. **No registry entry.**
 
 Auth always lives on `context.connections.<id>.authentication`. Parameterize URLs/secrets via `${<name>.url}` / `${<name>.apiKey}`. Add corresponding `exchange.json.metadata.variables`. Mark secrets `"secret": true`.
 
-### 2a — LLM(s) (mandatory)
+Per-type schema notes:
 
-Inline schema: `info.label` required, `metadata.platform: Gemini | OpenAI | AzureOpenai`. Connection has `kind: llm` + `url` + `authentication`. Ask "Add another?"
+- **LLM** — Inline: `info.label`, `metadata.platform: Gemini | OpenAI | AzureOpenai`. Connection: `kind: llm` + `url` + `authentication`.
+- **MCP** — Inline: `info.label`, `metadata.transport.kind` (`streamableHttp` | `sse` | `stdio`). After registering, ask the user **what `tool_name`** to call (required for the action). Ask if they know the input parameters. If yes, declare in action `inputs:`. If no, omit `inputs:` — runtime auto-discovers. **Never fabricate tool names or input schemas.**
+- **A2A** — Inline: `info.label` + interfaces branch. Use `a2a` for current A2A v1.0 agents, `a2a_v03` for legacy A2A v0.3 (Agent Broker stays backward-compatible). Card under `metadata.interfaces.<branch>.card` includes `name`, `description`, `url`, `protocolVersion`, `version`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`. See `references/gotchas.md` § "Registry agents" for the per-branch shape.
 
-### 2b — MCP server(s) (conditional)
+## Step 4: Technical Graph Definition (Phase 3 — Agent Script)
 
-Inline schema requires `info.label` and `metadata.transport.kind` (`streamableHttp` | `sse` | `stdio`).
+**Goal:** Translate the functional requirements into the `.agent` graph. **Brief drafts** of `system.instructions` and per-node instructions only — Phase 5 refines prose.
 
-After registering: ask the user **what `tool_name`** they intend to call (required for action definition). Ask if they know the input parameters. If yes, declare in action `inputs:`. If no, omit `inputs:` and the runtime auto-discovers. **Never fabricate tool names or input schemas.** Ask "Add another?"
+**Guiding principle: Graph = pre-defined rules. LLM node = reasoning.** Use the graph for anything that can be definitively hard-coded. Use an LLM-powered node (reasoning/orchestrator/generate) only for tasks that genuinely need reasoning. The graph acts as the **spine** that enforces high-level stages (e.g. Research → Draft → Review); within each stage, the LLM-powered node has autonomy.
 
-### 2c — A2A agent(s) (conditional)
+Write the first version of the graph:
 
-Inline schema requires `info.label` and an interfaces branch — `a2a` for current A2A v1.0 agents, `a2a_v03` for legacy A2A v0.3 agents (Agent Broker stays backward-compatible). The card under `metadata.interfaces.<branch>.card` includes `name`, `description`, `url`, `protocolVersion`, `version`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`. See `references/gotchas.md` § "Registry agents" for the per-branch shape. Ask "Add another?"
-
-## Step 4: Define the Broker (Phase 3 — Agent Script)
-
-Write the structural skeleton of the `.agent` file. **Brief drafts** of `system.instructions` and `prompt`/`reasoning.instructions` only — Phase 5 refines prose.
-
-Decisions:
-
-1. **`agent_name`** — kebab-case (e.g. `it-help-investigation`). Also the `.agent` filename stem and broker id.
-2. **Trigger.** Each broker has exactly one trigger per declared interface. `kind: "a2a"`, `target: "brokers://<broker-id>/a2a"`, `on_message:` is a fixed `transition to` (conditionals here are a compile error — use a router).
-3. **Node decomposition.** Per workflow step:
-   - Deterministic routing on a known value? → `router`.
-   - Fixed side-effect (run one tool with known args, set a variable)? → `executor`.
-   - Open-ended judgment, NO actions, NO HITL? → `generator`.
-   - Open-ended judgment with actions OR HITL? → `subagent` (default LLM-powered type).
-   - Coordinating MULTIPLE actions toward a compound goal? → `orchestrator`.
-   - Final response to A2A client? → `echo` with `kind: "a2a:status_update_event"` (or `"a2a:artifact_update_event"` for artifacts).
-4. **`subagent` is the default.** Use `orchestrator` ONLY for compound multi-action coordination. Single-action (even with A2A) → `subagent`.
-5. **HITL is built into `subagent`.** When a subagent needs user input, the runtime auto-sends `input-required`. Do NOT model clarification as `subagent → router → executor → echo` — anti-pattern.
-6. **Hard constraints from Phase 1 → router nodes, not prompts.** The constrained action goes in an `executor` gated by a `router`. Prompts can be ignored, router conditions cannot.
+1. **Configuration.** Pick `agent_name` from the user's requirements (kebab-case; also the `.agent` filename stem and broker id, e.g. `it-help-investigation`).
+2. **Trigger (entrypoint).** Each broker has exactly one trigger per declared interface. `kind: "a2a"`, `target: "brokers://<broker-id>/a2a"`, `on_message:` is a fixed `transition to`. Conditionals in the trigger are a compile error — use a router downstream.
+3. **LLM-powered nodes** (pick the right type per stage):
+   - **Reasoning node** (`subagent` keyword) — LLM-with-tools. Default LLM-powered type. Has built-in HITL.
+   - **Orchestrator node** (`orchestrator` keyword) — LLM-with-tools, specialized for coordinating multiple actions toward a compound goal.
+   - **Generate node** (`generator` keyword) — LLM-without-tools. One-shot generation, summarization, or classification with structured output.
+4. **Data structure (variables).** Declare any state shared across nodes.
+5. **Deterministic connections.** Every non-terminal node has a single `on_exit: -> transition to @<nodeType>.<nodeId>`. Every reachable path terminates at `echo`.
+6. **Conditionals** live in **router** nodes. Routers declare `routes:` + `otherwise:` and have **no** `on_exit` (`transition to` inside router `on_exit` is a compile error). Hard constraints from Phase 1 → router conditions, not prompts. Prompts can be ignored; router conditions cannot.
 7. **First node after trigger should NOT be a pass-through executor** that copies `@request.payload.message`. Reference `@request.payload.message.parts[0].text` directly downstream.
-8. **Edges.** Every non-terminal node has `on_exit: -> transition to @<nodeType>.<nodeId>`. Routers declare `routes:` + `otherwise:` and have NO `on_exit` (`transition to` inside router `on_exit` is a compile error).
-9. **Echo terminus.** Every reachable path ends in `echo`. See `references/gotchas.md` § "Echo node" for the two `kind` values, the `TASK_STATE_*` enum, and the function-vs-reference rules for `a2a.*` helpers.
+8. **Echo terminus.** Every reachable path ends in `echo` with `kind: "a2a:status_update_event"` (or `"a2a:artifact_update_event"` for artifacts). See `references/gotchas.md` § "Echo node" for the `TASK_STATE_*` enum and `a2a.*` helper rules.
 
-For full compile-error rules see `references/gotchas.md` § "Compile-error rules". For the structural template see `references/canonical-example.md`.
+Write a first version of `system.instructions` and each LLM-powered node's prompt — keep them brief; Phase 5 refines.
 
-Update the `brokers` entry in `agent-network.yaml` to reference the new `.agent` file.
+Update the `brokers` entry in `agent-network.yaml` to reference the new `.agent` file. For full compile-error rules see `references/gotchas.md` § "Compile-error rules". For the structural template see `references/canonical-example.md`.
 
 ## Step 5: Asset Assignment to Graph (Phase 4)
 
-Bind actions to nodes. Add an `actions:` entry per asset in the `.agent` file (A2A actions are `target` + `kind` only, no `inputs:`; MCP actions take `target`, `kind`, `tool_name`, optional `inputs:`). Reference from `reasoning.actions` (subagent/orchestrator) or `do: run` (executor).
+**Goal:** Assign assets from the YAML to the correct LLM-powered nodes.
 
-For binding rules and cap/least-privilege guidance, see `references/gotchas.md`:
+**Guiding principles:**
+
+- **Specialize each LLM-powered node in one domain.** Lump similar assets into the same node rather than spreading them.
+- **Reasoning vs. Orchestrator** — pick by what's connected:
+  - **Only MCP assets** on the node → **Reasoning node** (`subagent`).
+  - **Any A2A assets** on the node → **Orchestrator node** (`orchestrator`).
+- **≤ 4 total assets per LLM-powered node** (A2A + MCP combined). More than that → hallucinations. Split the node.
+- **Principle of Least Privilege.** One node gets read-only tools; another gets write-access tools. Never combine.
+- **Irreversible mutations (escalate, delete, send-to-customer, etc.) MUST be in `executor` nodes gated by `router`.** Never put them on a reasoning/orchestrator node — the LLM could invoke them bypassing the router. Idempotent updates (status updates, ticket updates) MAY live on an orchestrator if part of the compound goal.
+
+**Action:**
+
+1. Re-read the graph, the YAML, and the per-node instructions to refresh context.
+2. For each reasoning/orchestrator node, assign assets: *"Which YAML asset does this node need?"* If none is available, ask the user to create one.
+3. Bind in the `.agent` file. Each asset gets an `actions:` entry (A2A: `target` + `kind` only, no `inputs:`; MCP: `target`, `kind`, `tool_name`, optional `inputs:`). Reference from `reasoning.actions` (reasoning/orchestrator nodes) or `do: run` (executor nodes).
+4. **Review with the user** once all nodes are assigned: *"Here are the asset → node assignments: [list]. Confirm?"* Stop.
+5. **Ask the user to pick the LLM** for each LLM-powered node (different nodes can use different LLMs — cheap one for classification, stronger one for orchestration).
+6. **Write a one-line human-readable description** of what each reasoning/orchestrator node does. Store it on the node.
+
+For full binding rules see `references/gotchas.md`:
 - **§ "Compile-error rules — action invocation"** — A2A bare reference vs `with message =` in executor; MCP `with` rules; `http_headers` implicit.
-- **§ "Stage 4: Bind to nodes"** — 4-action cap, CR-18 least-privilege (irreversible mutations in `executor` + `router`, idempotent updates OK on orchestrator), LLM tier per node, action alias naming.
+- **§ "Stage 4: Bind to nodes"** — 4-asset cap, least-privilege, action alias naming.
 
 ## Step 6: Instruction Refinement (Phase 5)
 
-Make every LLM-powered node's prompt precise, testable, non-conflicting. **One node at a time, never batch.**
+**Goal:** Refine and battle-test instructions on every LLM-powered node. **One node at a time, never batch.**
 
-For each `generator`/`subagent`/`orchestrator`:
+For each generate/reasoning/orchestrator node:
 
-1. State which node: *"Refining `classifySeverity` (generator)."*
-2. Show V1 prompt (brief draft from Phase 3).
-3. Ask: *"What's your overall feedback? Any few-shot examples?"* Stop.
-4. **Write V2:** rewrite as a numbered routine. Each step → one tool call or output decision. Avoid "be helpful"/"be professional".
-5. **Make outputs concrete:** if the node has `outputs.properties.severity.enum`, the prompt must say *"Set severity to high when X, low otherwise"* matching the enum exactly.
-6. **Anticipate edge cases:** what if a key field is missing? Bake the answer in.
-7. **Per-node contradiction test:** does any prompt step get ruled out by deterministic graph?
+1. **Name the node**, once: *"Refining `classifySeverity`."* (Don't repeat which node you're on across turns — the user remembers.)
+2. **Show V1** of `system.instructions` (the brief draft from Phase 3).
+3. **Ask once:** *"Overall feedback? Any success criteria or few-shot examples?"* Stop.
+4. **Write V2** as a numbered routine. Each step → one tool call or one output decision. No "be helpful" / "be professional".
+5. **Make outputs concrete.** If the node has `outputs.properties.severity.enum`, the prompt must say *"Set severity to high when X, low otherwise"* using the enum literals exactly.
+6. **Anticipate edge cases.** What if a key field is missing? Bake the answer in.
+7. **Per-node contradiction test.** Does any V2 step get ruled out by deterministic graph logic? Reconcile.
 8. Apply V2 to file immediately. Move to next node.
 
-After all nodes refined: **cross-node contradiction test** — does any prompt conflict with another? Resolve with user.
+**After every node is refined:** run the **cross-node contradiction test** — does any prompt step conflict with another node's prompt or the graph? Surface conflicts to the user and resolve.
 
 ## Step 7: Final Topology Review (Phase 6)
 
