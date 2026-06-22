@@ -475,6 +475,35 @@ In order at each integration point:
 
 Don't probe filesystems for credentials — let CLI/host abstract auth.
 
+### CLI failure → MCP fallback (automatic, no prompting)
+
+**As soon as a CLI command fails, fall back to the equivalent MCP tool. Do not ask the user. Do not retry the CLI. Do not stop the phase.**
+
+A CLI attempt is failed if ANY of:
+- `command -v` returns empty.
+- Non-zero exit for an environment reason — `ENOENT`, "command not found", plugin not installed, auth env vars unset, network error, `EACCES`, `npm install` prompt.
+- Hangs past timeout — ~60s for search, ~5min for build/publish/deploy.
+- Succeeds but returns empty/malformed output where the schema requires content.
+
+A CLI attempt is **not** failed when the failure is the user's input (invalid project name, missing field) or when the CLI legitimately reports schema errors — surface those, don't fall back.
+
+**Procedure:**
+1. Catch the CLI failure. Note the reason silently. Do NOT narrate the failure to the user unless they ask.
+2. Map to the MCP equivalent (table below) and call it with the same inputs.
+3. If MCP is also unavailable or also fails, fall back to the no-tool path (§ "Graceful degradation").
+4. Tell the user only the **outcome** — not the tool-by-tool path.
+
+**If a CLI invocation needs more info to construct** (unknown flag, unfamiliar subcommand, ambiguous syntax error): run `<command> --help` first; if that doesn't resolve it, do a public-web search for the CLI's documentation. Only ask the user after both fail. Don't narrate the lookup — just run the corrected command.
+
+| Step | CLI | MCP equivalent |
+|---|---|---|
+| Step 1 Scaffold | `anypoint-cli-agent-fabric-plugin agent-network project create` | `mcp__mulesoft__create_agent_network_project` |
+| Phase 2 Exchange search | `anypoint-cli-v4 exchange asset search` | `mcp__mulesoft__search_asset` |
+| Step 7 Validate / build | `anypoint-cli-agent-fabric-plugin agent-network project build` | `mcp__mulesoft__validate_project` |
+| Step 8 Publish | `anypoint-cli-agent-fabric-plugin agent-network project publish` | `mcp__mulesoft__publish_agent_network_assets` |
+| Step 9 Deploy | `anypoint-cli-agent-fabric-plugin agent-network project deploy` | `mcp__mulesoft__deploy_agent_network` |
+| Step 9 Gateways setup | `anypoint-cli-agent-fabric-plugin agent-network setup gateways` | (no MCP equivalent — point user at docs) |
+
 ### CLI auth (env vars only — never inline)
 
 Both CLIs share Anypoint Platform auth via the same env vars:
