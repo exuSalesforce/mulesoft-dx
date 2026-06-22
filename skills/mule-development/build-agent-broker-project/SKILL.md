@@ -1,5 +1,5 @@
 ---
-name: mulesoft-agent-broker-builder
+name: build-agent-broker-project
 description: "Build, edit, validate, publish, and deploy a MuleSoft Agent Broker (Agent Network V2) project end-to-end. Use whenever the user asks to build, create, scaffold, configure, edit, validate, publish, or deploy an Agent Broker, agent network V2, AgentScript, `.agent` file, or `agentNetwork: 2.0.0` project. Do NOT trigger for V1→V2 migration (use the converter skill)."
 license: Apache-2.0
 metadata:
@@ -16,7 +16,7 @@ Turns a natural-language description of a multi-agent workflow into a complete, 
 ## When to use
 
 - Use for: building a new Agent Broker; adding/swapping nodes, agents, MCP tools, or LLMs; tuning instructions; changing routing; running validate/publish/deploy.
-- Don't use for: V1→V2 conversions (use `mulesoft-agent-broker-v1-to-v2-converter`); standalone Mule apps, DataWeave, or APIs.
+- Don't use for: V1→V2 conversions (use `translate-agent-broker-old-to-new-project`); standalone Mule apps, DataWeave, or APIs.
 
 If the YAML has `schemaVersion: 1.0.0`, this is V1 — stop and route to the converter. The V2 marker is `agentNetwork: 2.0.0` (unquoted, top of file).
 

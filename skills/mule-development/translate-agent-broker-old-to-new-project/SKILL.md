@@ -1,5 +1,5 @@
 ---
-name: mulesoft-agent-broker-v1-to-v2-converter
+name: translate-agent-broker-old-to-new-project
 description: "Convert a MuleSoft Agent Network V1 project (`schemaVersion: 1.0.0`) into a V2 project (`agentNetwork: 2.0.0`). Each V1 broker becomes a V2 broker with one orchestrator node — no graph splitting, no prompt rewriting. Use when the user asks to upgrade, convert, migrate, translate, or port an Agent Network / Agent Broker / Daisy planner from V1 to V2, or whenever the working folder contains a V1 `agent-network.yaml`."
 license: Apache-2.0
 metadata:
@@ -13,7 +13,7 @@ Converts an Agent Network V1 project (schema `1.0.0`) into V2 (schema `2.0.0`) b
 
 Preserve the user's wording. Do not improvise or "improve" the source instructions. Treat the V1 file as the source of truth and only change what V2 actually requires.
 
-If the user wants a richer multi-node graph (split deterministic routing into `router` nodes, move side-effects into `executor` nodes, separate cheap summary work into `generator` nodes), point them at **`mulesoft-agent-broker-builder`** as the natural next step.
+If the user wants a richer multi-node graph (split deterministic routing into `router` nodes, move side-effects into `executor` nodes, separate cheap summary work into `generator` nodes), point them at **`build-agent-broker-project`** as the natural next step.
 
 ## When to use
 
@@ -217,7 +217,7 @@ After writing, list the created files.
 Tell the user:
 - Full path to the new folder.
 - Broker name and orchestrator node id.
-- One-line note: this is a simple V1→V2 translation with one orchestrator node; for a richer multi-node graph (router/generator/executor split), use `mulesoft-agent-broker-builder`.
+- One-line note: this is a simple V1→V2 translation with one orchestrator node; for a richer multi-node graph (router/generator/executor split), use `build-agent-broker-project`.
 
 ## Common mistakes to avoid
 
