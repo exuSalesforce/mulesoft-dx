@@ -62,7 +62,7 @@ If a phase needs multiple actions, do them in tool calls without narrating betwe
 
 Turns a natural-language description of a multi-agent workflow into a complete, validated, deployable Agent Network V2 (GA, A2A v1.0) project. Runs a 6-phase guided experience and adds publish + deploy.
 
-**The skill is CLI-first end-to-end.** Validate/publish/deploy use the **Anypoint CLI Agent Fabric plugin** (`mulesoft-anypoint-cli-agent-fabric-plugin`). Exchange asset search uses **Anypoint CLI v4** (`anypoint-cli-v4 exchange asset search`). Both are portable across Claude Code, Cursor, Codex, and Vibes, and match the CI/CD path. MCP tools (`mcp__mulesoft__*`) work as a fallback when present, but no MCP dependency is required.
+**The skill is CLI-first end-to-end.** Validate/publish/deploy use the **Anypoint CLI Agent Fabric plugin** (`mulesoft-anypoint-cli-agent-fabric-plugin`). Exchange asset search uses **Anypoint CLI v4** (`anypoint-cli-v4 exchange asset list`). Both are portable across Claude Code, Cursor, Codex, and Vibes, and match the CI/CD path. MCP tools (`mcp__mulesoft__*`) work as a fallback when present, but no MCP dependency is required.
 
 ## When to use
 
@@ -167,7 +167,7 @@ Asset types: **LLMs** (always ≥1), **MCP tools**, **A2A agents**.
 
 **Asset search order** — for each capability identified in Phase 1:
 
-1. **Private Exchange first.** If `anypoint-cli-v4` is installed: `anypoint-cli-v4 exchange asset search --search "<keywords>" --organization <orgId>`. Else if MCP `search_asset` is available: call with `assetFilters: ["llm"]` / `["mcp"]` / `["agent"]` + `exchangeScope: "Private"`.
+1. **Private Exchange first.** If `anypoint-cli-v4` is installed: `anypoint-cli-v4 exchange asset list --search "<keywords>" --organization <orgId>`. Else if MCP `search_asset` is available: call with `assetFilters: ["llm"]` / `["mcp"]` / `["agent"]` + `exchangeScope: "Private"`.
 2. **Public Exchange** if no Private match. Drop `--organization` / set `exchangeScope: "Public"`.
 3. **Placeholder** if neither has it. Register as Inline with `${var}`-style URL/auth placeholders the user can fill in later.
 

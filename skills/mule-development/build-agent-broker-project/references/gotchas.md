@@ -457,7 +457,7 @@ The skill prefers the **Anypoint CLI Agent Fabric plugin** for validate/publish/
 |---|---|---|---|---|
 | Scaffold project | 0 | `agent-network project create --name <n> --output-dir <d> --create-dir` | `create_agent_network_project` | Write canonical scaffold directly; warn about missing `groupId` |
 | Configure YAML | 0–5 | *(skill IS the experience — edits files in place)* | *(skip — `configure_agent_network_yaml` returns a duplicate prompt template)* | — |
-| Search Exchange | 1, 2 | `anypoint-cli-v4 exchange asset search` | `search_asset` | Ask user for `groupId`/`assetId`/`version` |
+| Search Exchange | 1, 2 | `anypoint-cli-v4 exchange asset list` | `search_asset` | Ask user for `groupId`/`assetId`/`version` |
 | Validate / build | 6 | `agent-network project build` | `validate_project` | Structural checklist + doc link |
 | Publish to Exchange | 7 | `agent-network project publish` | `publish_agent_network_assets` | Doc link |
 | Deploy to runtime | 8 | `agent-network project deploy` | `deploy_agent_network` | Doc link |
@@ -498,7 +498,7 @@ A CLI attempt is **not** failed when the failure is the user's input (invalid pr
 | Step | CLI | MCP equivalent |
 |---|---|---|
 | Step 1 Scaffold | `anypoint-cli-agent-fabric-plugin agent-network project create` | `mcp__mulesoft__create_agent_network_project` |
-| Phase 2 Exchange search | `anypoint-cli-v4 exchange asset search` | `mcp__mulesoft__search_asset` |
+| Phase 2 Exchange search | `anypoint-cli-v4 exchange asset list` | `mcp__mulesoft__search_asset` |
 | Step 7 Validate / build | `anypoint-cli-agent-fabric-plugin agent-network project build` | `mcp__mulesoft__validate_project` |
 | Step 8 Publish | `anypoint-cli-agent-fabric-plugin agent-network project publish` | `mcp__mulesoft__publish_agent_network_assets` |
 | Step 9 Deploy | `anypoint-cli-agent-fabric-plugin agent-network project deploy` | `mcp__mulesoft__deploy_agent_network` |
@@ -523,7 +523,7 @@ Install:
 
 ### Exchange search — Phase 1 preview, Phase 2 registration
 
-**CLI (preferred):** `anypoint-cli-v4 exchange asset search --search "<query>" [--type <type>] [--organization <orgId>]`
+**CLI (preferred):** `anypoint-cli-v4 exchange asset list --search "<query>" [--type <type>] [--organization <orgId>]`
 
 - General CLI v4 type filters: `connector` | `rest-api` | `soap-api` | `template` | `example` | `custom` | `raml-fragment`. Agent-Fabric–specific types (LLM/MCP/Agent) aren't first-class here yet, so search broadly and filter the result list by name/description.
 - Useful follow-ups: `anypoint-cli-v4 exchange asset describe <groupId>/<assetId>/<version>` to confirm details before registering.
