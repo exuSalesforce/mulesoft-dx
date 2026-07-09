@@ -16309,7 +16309,7 @@ paths:
       description: |
         Get all group access mappings configured for the team.
 
-        **Required Permission:** Access Controls Viewer (`view:access_controls`)
+        **Required Scope:** `view:access_controls` (for connected apps)
       parameters:
       - name: membership_type?
         description: Include the group access mappings that grant the provided membership
@@ -16415,7 +16415,7 @@ paths:
       description: |
         Replace the entire list of group mappings associated with this team.
 
-        **Required Permission:** Access Controls Admin (`admin:access_controls`)
+        **Required Scope:** `admin:access_controls` (for connected apps)
       parameters:
       - $ref: '#/components/parameters/XOrigin_organizationId_Path'
       - $ref: '#/components/parameters/XOrigin_teamId_Path'
@@ -16450,7 +16450,7 @@ paths:
       description: |
         Bulk add mappings and/or modify mappings' membership_type to the team. Removing mappings is not supported by this method.
 
-        **Required Permission:** Access Controls Admin (`admin:access_controls`)
+        **Required Scope:** `admin:access_controls` (for connected apps)
       parameters:
       - $ref: '#/components/parameters/XOrigin_organizationId_Path'
       - $ref: '#/components/parameters/XOrigin_teamId_Path'
@@ -16485,7 +16485,7 @@ paths:
       description: |
         Bulk remove mappings from the team.
 
-        **Required Permission:** Access Controls Admin (`admin:access_controls`)
+        **Required Scope:** `admin:access_controls` (for connected apps)
       parameters:
       - $ref: '#/components/parameters/XOrigin_organizationId_Path'
       - $ref: '#/components/parameters/XOrigin_teamId_Path'
