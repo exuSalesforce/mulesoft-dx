@@ -25,7 +25,9 @@ _SKILL_SKIP_FILES = {'.DS_Store'}
 _SKILL_SKIP_EXTS = {'.pyc'}
 
 # Google Tag Manager container ID for the MuleSoft marketing surface.
-GTM_CONTAINER_ID = 'GTM-NH8DNZL'
+# Intentionally empty — GTM is disabled until the container ID is confirmed.
+# When confirmed, set to: 'GTM-NH8DNZL'
+GTM_CONTAINER_ID = ''
 
 
 def _generate_skill_manifest(source_dir: Path, output_dir: Path) -> None:
@@ -418,11 +420,21 @@ class PortalGenerator:
             'jsonpath_js_path': f"{prefix}assets/{self._jsonpath_filename}",
         }
 
+    def _error_page_asset_paths(self) -> dict:
+        """Return asset paths for error pages using base_url as prefix, so they resolve correctly at any URL depth."""
+        base = self.base_url
+        return {
+            'css_path': f"{base}/assets/{self._css_filename}",
+            'icons_path': f"{base}/assets/icons",
+            'portal_js_path': f"{base}/assets/{self._js_filename}",
+            'jsonpath_js_path': f"{base}/assets/{self._jsonpath_filename}",
+        }
+
     def _generate_static_error_page(self, template_name: str, output_name: str) -> None:
         """Render a static error page template to output_dir/output_name."""
         template = self.env.get_template(template_name)
         html = template.render(
-            **self._asset_paths(0),
+            **self._error_page_asset_paths(),
             build_label=self.build_label,
             base_url=self.base_url,
             chrome={k: v for k, v in self.chrome.items() if k != 'header'} if self.chrome else None,
