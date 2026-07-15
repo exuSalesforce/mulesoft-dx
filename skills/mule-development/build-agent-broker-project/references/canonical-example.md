@@ -236,7 +236,7 @@ brokers:
 ## `brokers/it-help-investigation.agent`
 
 ```text
-# @dialect: AGENTFABRIC=0.1
+# @dialect: AGENTFABRIC=1.0
 
 system:
   instructions: "You are an IT Help Desk agent. You triage incoming support tickets, classify their severity, and either escalate, investigate, or request more information."
@@ -469,5 +469,5 @@ These are the things the published docs don't make obvious — read the docs for
 8. **`outputs:` placement** — generator at node top level (see `classifySeverity`), orchestrator/subagent nested inside `reasoning:` (see `crossPlatformTriage`).
 9. **Echo node uses A2A v1.0 update events** — `kind: "a2a:status_update_event"` (state + message) or `kind: "a2a:artifact_update_event"` (artifact + append/lastChunk). The state value uses `TASK_STATE_*` constants (`TASK_STATE_COMPLETED`, `TASK_STATE_FAILED`, etc.).
 10. **One echo per terminal path** — this example uses 4 separate echo nodes. Inside `a2a.message()` / `a2a.textPart()`, references are direct (`@generator.classifySeverity.output.ticket_id + " escalated"`). The `{!@...}` template form does NOT apply inside echo helpers.
-11. **Dialect `# @dialect: AGENTFABRIC=0.1`** — pinned to GA dialect 0.1.
+11. **Dialect `# @dialect: AGENTFABRIC=1.0`** — pinned to GA dialect 1.0.
 12. **`policies` shape (GA)** — when used, `policies` is an object with `inbound` and `outbound` arrays, not a flat list of policy ids.

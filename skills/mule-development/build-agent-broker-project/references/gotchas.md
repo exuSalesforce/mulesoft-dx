@@ -69,10 +69,10 @@ The Beta combination of `metadata.protocol: a2a` + flat `metadata.card.<branch>`
 ### Dialect line
 
 ```text
-# @dialect: AGENTFABRIC=0.1
+# @dialect: AGENTFABRIC=1.0
 ```
 
-`AGENTFABRIC=0.1` pins to dialect 0.1 or later within the major. Major-only (`AGENTFABRIC=0`) references the latest within that major. Patch fixes (`AGENTFABRIC=0.1.2`) are invalid; major-or-major.minor only.
+`AGENTFABRIC=1.0` pins to dialect 1.0 or later within the major. Major-only (`AGENTFABRIC=1`) references the latest within that major. Patch fixes (`AGENTFABRIC=1.0.2`) are invalid; major-or-major.minor only.
 
 ### `config:` block — minimal canonical form
 

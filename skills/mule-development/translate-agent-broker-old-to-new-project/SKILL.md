@@ -231,4 +231,4 @@ Tell the user:
 - **Don't** add `inputs:` to MCP actions during V1→V2 conversion. V1 has no schemas, so any `inputs:` block is guessed from prose.
 - **Don't** emit `metadata.protocol` or flat `metadata.card` on registry agents — GA uses `metadata.interfaces.<branch>.card`. Place V1-converted agents under `a2a_v03` (back-compat); the broker itself uses `a2a` (v1.0).
 - **Don't** emit `kind: "a2a:response"` with a nested `task: a2a.task({...})` in echo nodes — GA uses `kind: "a2a:status_update_event"` (state + message) or `kind: "a2a:artifact_update_event"` (artifact + append/lastChunk). State values are `TASK_STATE_*` constants.
-- **Don't** emit `# @dialect: AGENTFABRIC=0.1-BETA` — use `# @dialect: AGENTFABRIC=0.1` for GA.
+- **Don't** emit `# @dialect: AGENTFABRIC=0.1-BETA` or `# @dialect: AGENTFABRIC=0.1` — use `# @dialect: AGENTFABRIC=1.0` for GA.

@@ -1,4 +1,4 @@
-# @dialect: AGENTFABRIC=0.1
+# @dialect: AGENTFABRIC=1.0
 
 system:
   instructions: "<one-line summary of the broker's role, derived from V1 broker description>"

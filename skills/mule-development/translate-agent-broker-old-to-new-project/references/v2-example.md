@@ -441,7 +441,7 @@ brokers:
 ## brokers/customer-onboarding.agent
 
 ```text
-# @dialect: AGENTFABRIC=0.1
+# @dialect: AGENTFABRIC=1.0
 
 system:
   instructions: "You are the Customer Onboarding Orchestrator. You coordinate onboarding of a new customer across Workday, Salesforce, Zendesk, Badging, License Procurement, and IT systems."
@@ -595,4 +595,4 @@ These are the specific decisions reflected in the V2 example, encoded so the con
 11. **Prompt preservation**: the V1 `spec.instructions` were copied into the orchestrator's `system.instructions` with only minor cleanup (e.g. fixing "this a long running task" → "this is a long running task", and replacing the dotted MCP tool name with the new alias). Bullets and ordering were preserved.
 12. **One orchestrator only**: even though V1's prompt has multiple steps, the V2 conversion keeps everything in a single `orchestrator` node. No router/executor/generator was introduced.
 13. **Echo node (GA)**: response uses `kind: "a2a:status_update_event"` with `state: "TASK_STATE_COMPLETED"` and a `message` built via `a2a.message(...)`. The Beta `kind: "a2a:response"` wrapping `task: a2a.task({...})` is gone.
-14. **Dialect line**: `# @dialect: AGENTFABRIC=0.1` pins to GA dialect 0.1.
+14. **Dialect line**: `# @dialect: AGENTFABRIC=1.0` pins to GA dialect 1.0.
