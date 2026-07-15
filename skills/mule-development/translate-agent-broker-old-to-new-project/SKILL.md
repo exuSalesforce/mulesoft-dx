@@ -131,7 +131,8 @@ Mapping rules:
 - `kind: agent` (V1) → `kind: a2a` (V2). `kind: mcp` and `kind: llm` stay.
 - For LLM connections, move auth into a top-level `authentication` block: `kind: apiKey`, `apiKey: ${<llmName>.apiKey}`. Don't keep V1's `spec.configuration` shape.
 - Replace hardcoded URLs with `${<refName>.url}` variables. The actual URL value goes into `exchange.json`.
-- Connection identifiers and ref names should be camelCase in V2 (e.g. `workdayAgentConnection`, `workdayAgent`). Rename V1's PascalCase consistently.
+- **Connection ID format is enforced by the V2 schema**: `context.connections.<id>` keys must use only lowercase letters, digits, and non-trailing underscores (`^[a-z0-9_]+$`). Convert V1 PascalCase like `WorkdayAgentTestConnection` into `workday_agent_connection` (snake_case). Do NOT use camelCase or kebab-case for connection ids — the linter rejects them.
+- Registry `ref.name` values (agents/mcps/llms) are more permissive and typically become camelCase in V2 (e.g. `workdayAgent`). Only the connection *key* is snake_case-restricted.
 
 #### Broker translation
 
@@ -166,7 +167,7 @@ brokers:
               outputModes: [application/json, text/plain]
 ```
 
-Use a kebab-case broker id derived from V1 (e.g. `CustomerOnboardingBrokerTest` → `customer-onboarding`).
+**Broker ID format is enforced by the V2 schema**: the key under `brokers:` must use only lowercase letters, digits, and non-trailing underscores (`^[a-z0-9_]+$`). Convert V1 PascalCase like `CustomerOnboardingBrokerTest` into `customer_onboarding` (snake_case). Kebab-case (`customer-onboarding`) fails lint. The `.agent` *filename* is separate and may use kebab-case if you prefer (e.g. `./brokers/customer-onboarding.agent`) — only the YAML broker key is restricted. Match the trigger `target: "brokers://<broker-id>/a2a"` to the YAML key exactly.
 
 ### 3b. Build the V2 `exchange.json`
 
