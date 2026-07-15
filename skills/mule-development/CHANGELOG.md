@@ -4,6 +4,12 @@ All notable changes to `@salesforce/mulesoft-vibes-skills` are documented in thi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.6.1 — 2026-07-15
+
+### Changed
+
+- **`build-agent-broker-project`** and **`translate-agent-broker-old-to-new-project`** — enforce snake_case for connection IDs and broker IDs in skill code examples per the V2 schema (`^[a-z0-9_]+$`). Prior examples emitted camelCase / kebab-case which the ACB linter rejects. Also loosens the `agent_name` rule to "optional, conventionally kebab-case" since the docs mark it optional and the field has no strict format. Verified against the authoritative docs at `mulesoft/docs-code-builder@latest/agent-network/2.0/modules/ROOT`.
+
 ## [1.6.0] - 2026-07-02
 
 ### Added
