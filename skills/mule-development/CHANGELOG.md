@@ -4,6 +4,12 @@ All notable changes to `@salesforce/mulesoft-vibes-skills` are documented in thi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-16
+
+### Added
+
+- **`author-governance-ruleset`** — new skill that authors valid Anypoint API Governance rulesets (Validation Profile 1.0 YAML) using the `anypoint-cli-v4 governance:ruleset` CLI for model discovery, validation, and simplification. Force-installs the latest governance plugin, resolves domain language to canonical target classes, discovers classes/properties/constraints per domain, then writes, validates (`validate-authoring`), and simplifies the ruleset before presenting it. Covers OpenAPI, RAML, AsyncAPI, MCP servers, Anypoint API instances, and API projects; enforces the single-specKind rule and never guesses class/property names or constraint compatibility.
+
 ## 1.6.1 — 2026-07-15
 
 ### Changed
