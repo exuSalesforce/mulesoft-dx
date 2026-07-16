@@ -21,7 +21,7 @@ This skill uses the `anypoint-cli-v4 governance:ruleset` CLI commands to discove
 
 ---
 
-## Step 0: Ensure the Governance Plugin Version
+## Prerequisite: Ensure the Governance Plugin Version
 
 Before running any governance CLI commands, force-install the latest governance plugin so the model, constraints, and validation logic match this skill. Version 1.0.20 or greater is required:
 
