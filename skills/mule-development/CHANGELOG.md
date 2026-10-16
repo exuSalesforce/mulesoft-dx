@@ -33,7 +33,7 @@ Refreshes the Agent Broker skills against the Agent Network 2.0 docs (`mulesoft/
   - auto-applied policies;
   - Last-Mile Security;
   - the RTF ingress-domain requirement.
-- **`build-agent-broker-project`** — Scaffold: `--empty-project`, `--group-id`, `project broker create`. `exchange.json` has no `organizationId`.
+- **`build-agent-broker-project`** — Scaffold: `--empty-project`, `--group-id`, `project broker create`. The IT example's `exchange.json` omits `organizationId` and templates `groupId`, while the YAML reference's samples include it, so both forms are documented.
 - **`build-agent-broker-project`** — The canonical example is replaced verbatim with the docs' *IT Investigation Broker* (OAuth2 client-credentials, API key, OBO auth, `http_headers` forwarding).
 - **`build-agent-broker-project`** — Broker IDs are lowercase snake_case, per the docs.
 - **`build-agent-broker-project`** — Subagent vs orchestrator is chosen by coordination scope, per the docs' TIP.
@@ -46,6 +46,10 @@ Refreshes the Agent Broker skills against the Agent Network 2.0 docs (`mulesoft/
   - LLM provider and endpoint table, plus LLM Proxy;
   - CLI auth options.
 - **`translate-agent-broker-old-to-new-project`** — Never-edit-`target/` guardrail (carried over from 1.8.5).
+- **`translate-agent-broker-old-to-new-project`** — Broker IDs must be lowercase snake_case (YAML reference). Connection IDs follow the schema pattern `^[a-zA-Z][a-zA-Z0-9_.-]*[a-zA-Z0-9]$`. This replaces the earlier "any valid YAML identifier" wording.
+- **`translate-agent-broker-old-to-new-project`** — Converted `exchange.json` adds `apiVersion` (the Exchange version group). Secret variables get `"default": ""` instead of carrying a V1 placeholder, and `groupId`/`organizationId` carry over. Variables only V1 used are dropped.
+- **`translate-agent-broker-old-to-new-project`** — V1 LLM `spec.configuration` keys such as `timeout` are dropped, because the V2 LLM connection schema rejects extra keys. The V1 model is preserved exactly; the example now uses `gemini-3-flash-preview`, as in V1.
+- **`translate-agent-broker-old-to-new-project`** — Registry `metadata.tools` and `metadata.models` are optional and omitted by default, as in the docs example. The step that added a speculative sibling model is gone.
 
 ## [1.9.3] - Unreleased
 
