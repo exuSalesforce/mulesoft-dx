@@ -329,7 +329,7 @@ brokers:
           version: 1.0.0
           capabilities:
             streaming: false
-            pushNotifications: true
+            pushNotifications: false
           defaultInputModes:
             - application/json
             - text/plain
@@ -600,3 +600,4 @@ These are the specific decisions reflected in the V2 example, encoded so the con
 15. **Model preserved**: the `.agent` `llm:` block uses V1's `spec.llm.configuration.model` (`gemini-3-flash-preview`) unchanged. V1's `gemini.modelName` variable was dropped because nothing in V2 references it.
 16. **`exchange.json` versioning**: `apiVersion: "v1.0"` is the Exchange version group. `version` starts at `1.0.0`, and Exchange auto-increments it on later publishes. `groupId` and `organizationId` carry over from V1.
 17. **Secret defaults blanked**: V1's placeholder `gemini.apiKey` default became `""`. Supply the real key at deploy with `--property`. Registry `metadata.tools` and `metadata.models` are omitted, matching the docs example (both are optional).
+18. **Broker `pushNotifications` set to `false`**: V1's broker card says `true`, but CLI 1.5.0 `project build` rejects `true` on a broker card (error 1035 `pushNotificationNotSupported`). The conversion sets it to `false` and tells the user. Registry agent cards keep their own value.

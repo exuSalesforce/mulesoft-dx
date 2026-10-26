@@ -156,7 +156,7 @@ brokers:
           version: 1.0.0
           capabilities:
             streaming: false
-            pushNotifications: <copied from V1 card.capabilities.pushNotifications, default false>
+            pushNotifications: false   # always false on the broker card (CLI 1.5.0 error 1035)
           defaultInputModes: [application/json, text/plain]
           defaultOutputModes: [application/json, text/plain]
           skills:
@@ -168,6 +168,8 @@ brokers:
               inputModes: [application/json, text/plain]
               outputModes: [application/json, text/plain]
 ```
+
+**Broker card `pushNotifications` is always `false`.** CLI 1.5.0 `project build` fails with error 1035 `pushNotificationNotSupported` if a broker card sets `capabilities.pushNotifications: true`. If V1's broker card had `true`, write `false` and tell the user it was changed.
 
 **Broker IDs must be lowercase snake_case.** The YAML reference says broker keys are *"identifiers using only lowercase `a`–`z`, `0`–`9`, and non-trailing underscores (`_`)."* The JSON schema is looser and would accept camelCase or kebab-case, but follow the docs. So convert V1 PascalCase like `CustomerOnboardingBrokerTest` to `customer_onboarding`, and keep it short: long broker IDs fail the deployment-name length limit (CLI error 7014). The `.agent` *filename* is independent and may be kebab-case (e.g. `./brokers/customer-onboarding.agent`). Also match the trigger `target: "brokers://<broker-id>/a2a"` to the YAML broker key **exactly**. (One AgentScript reference snippet uses `brokers://employee-onboarding/a2a`; that conflicts with the YAML reference rule, so don't copy it.)
 
@@ -222,7 +224,7 @@ After writing, list the created files.
 Tell the user:
 - Full path to the new folder.
 - Broker name and orchestrator node id.
-- Anything dropped or blanked (e.g. LLM `timeout`, unused variables, secret defaults).
+- Anything dropped, blanked, or changed (e.g. LLM `timeout`, unused variables, secret defaults, broker `pushNotifications: true` → `false`).
 - Next step: validate with `agent-network project build` (see `build-agent-broker-project`), then supply secrets at deploy via `--property`.
 - One-line note: this is a simple V1→V2 translation with one orchestrator node; for a richer multi-node graph (router/generator/executor split), use `build-agent-broker-project`.
 
@@ -237,6 +239,7 @@ Tell the user:
 - **Don't** forget `apiVersion` (the Exchange version group) in `exchange.json`.
 - **Don't** commit secret defaults. Secret variables use `"default": ""`.
 - **Don't** emit camelCase or kebab-case broker IDs. The docs require lowercase `a–z`, `0–9`, and non-trailing `_`.
+- **Don't** copy `pushNotifications: true` onto the V2 broker card. The CLI rejects it (error 1035).
 - **Don't** change the model V1 used, and don't carry V1-only LLM keys like `timeout` onto the V2 connection.
 - **Don't** put auth blocks inside the registry — auth lives on `context.connections.<name>.authentication`.
 - **Don't** add `inputs:` to MCP actions during V1→V2 conversion. V1 has no schemas, so any `inputs:` block is guessed from prose.

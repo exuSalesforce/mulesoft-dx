@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [1.9.4] - Unreleased
 
-Refreshes the Agent Broker skills against the Agent Network 2.0 docs (`mulesoft/docs-code-builder`, branch `latest`) and Anypoint CLI Agent Fabric plugin **v1.4.0**.
+Refreshes the Agent Broker skills against the Agent Network 2.0 docs (`mulesoft/docs-code-builder`, branch `latest`, as of 2026-10-25) and Anypoint CLI Agent Fabric plugin **v1.5.0**.
 
 ### Added
 
@@ -16,11 +16,18 @@ Refreshes the Agent Broker skills against the Agent Network 2.0 docs (`mulesoft/
   - the full CLI error-code catalog, with the 1020–1024 collision note;
   - dependent-service failures (Exchange, API Manager, AMC, Gateway Manager, Access Management) and the retry/timeout engine.
 - **`build-agent-broker-project`** — Workflow B.5 (troubleshoot).
+- **`build-agent-broker-project`** — LLM authentication: the optional `registry.llms.<id>.metadata.authentication` declarations (with `defaultConfiguration`), the kinds an LLM connection supports, and the rule that the connection's kind must be one the LLM asset declares.
+- **`build-agent-broker-project`** — Auth kinds `none` and `amazonSigv4`, scoped to LLM connections.
+- **`build-agent-broker-project`** — A2A connection `card.authentication` and `interfaces` (`jsonrpc`/`http`/`grpc` `basePath`). The docs' `card` sample is mis-indented and doesn't parse; the skill uses the corrected form.
+- **`build-agent-broker-project`** — `brokers:replicas` deployment property (CLI v1.5.0) and Anypoint Code Builder local deploy and test (BETA).
+- **`build-agent-broker-project`** — CLI v1.5.0 error codes 1035–1038, 3035, 3038–3040, and 3060–3068 in the troubleshooting catalog, sourced from the CLI's `TROUBLESHOOTING.md` and messages.
 - **`build-agent-broker-project`** — Conversational memory section: `contextId` reuse, the A2A v1.0 wire contract (`A2A-Version: 1.0`, `SendMessage`, `ROLE_USER`), Client ID Enforcement ordered before User Context Propagation, and the `OBJECT_STORE_DEFAULT_TTL_MS` retention setting.
 - **`build-agent-broker-project`** — Broker CPU/memory resources section (`--deployment-properties-file` / `--deployment-property`).
 - **`build-agent-broker-project`** — Documented the `undeploy` and `unpublish` lifecycle steps (public since plugin v1.3.0), `supportedInterfaces` guidance, and the never-edit-`target/` guardrail. These were carried over from the unmerged 1.8.5 entry of this PR.
 
 ### Changed
+
+- **Both skills** — Broker cards set `capabilities.pushNotifications: false`. CLI v1.5.0 `project build` rejects `true` (error 1035), although the docs' IT example still shows `true`. The canonical example, the translate skill's broker rule, and its V2 example are updated.
 
 - **`build-agent-broker-project`** — A2A v1.0 registry cards: `url` and `protocolVersion` go in `supportedInterfaces[]`, because the schema rejects them at the top level. The Case C placeholder was fixed to match.
 - **`build-agent-broker-project`** — Publish: `apiVersion` is the Exchange version group. Exchange auto-increments the version, and renaming the group bumps major. Asset names must be unique org-wide. `secret: true` variables may keep `"default": ""`.
@@ -28,7 +35,7 @@ Refreshes the Agent Broker skills against the Agent Network 2.0 docs (`mulesoft/
   - targets are the shared space, private space, and RTF;
   - default gateway names, including `agent-network-shared-gw`;
   - `setup gateways --update`;
-  - the full v1.4.0 deploy flag set;
+  - the full v1.5.0 deploy flag set (identical to v1.4.0);
   - no switching targets or gateways;
   - auto-applied policies;
   - Last-Mile Security;

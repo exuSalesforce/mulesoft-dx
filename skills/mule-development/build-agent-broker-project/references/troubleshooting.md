@@ -1,6 +1,6 @@
 # Troubleshooting Agent Networks
 
-Sources: `af-troubleshoot-agent-networks` and `af-troubleshoot-errors` (docs-code-builder `latest`, agent-network 2.0). The CLI error catalog reflects plugin v1.4.0.
+Sources: `af-troubleshoot-agent-networks` and `af-troubleshoot-errors` (docs-code-builder `latest`, agent-network 2.0). The CLI error catalog reflects plugin v1.5.0.
 
 **Triage order:**
 1. Read the CLI `errorCode` and look it up in the *CLI error catalog* below.
@@ -94,7 +94,9 @@ Error codes are grouped by area:
 | Access management | 10001 |
 | Gateway flags / CLI args | 11001–11006 |
 
-(8500–8534 belong to local-run commands that aren't part of the public CLI and are omitted here.)
+(8500–8550 belong to local-run commands that aren't part of the public CLI and are omitted here.)
+
+Rows marked *(CLI 1.5.0)* are new in plugin v1.5.0. They come from the CLI's own `TROUBLESHOOTING.md` and error messages and aren't on the docs troubleshooting page yet.
 
 > **Code collision (1020–1024), a known defect.** Each of these codes is assigned to *two* errors: a broker-interface error and an MCP-introspection (`server.json` / MCP YAML) error. Rows marked *see note* are affected. *"Match the message instead of the number alone."*
 
@@ -141,6 +143,10 @@ Error codes are grouped by area:
 | 1032 | `assetIdTooLongForDeployment` | The project asset id exceeds the deployment-name length limit. | Shorten the asset id and rebuild. |
 | 1033 | `invalidExchangeJson` | `exchange.json` isn't valid JSON. | Fix the JSON syntax. |
 | 1034 | `invalidExchangeJsonField` | An `exchange.json` field has the wrong type. | Set the reported field to the expected type (a string). |
+| 1035 | `pushNotificationNotSupported` *(CLI 1.5.0)* | A broker sets `capabilities.pushNotifications: true` in its A2A card, but push notifications aren't supported. | Set `pushNotifications` to `false` in `brokers.<id>.interfaces.a2a.card` and rebuild. |
+| 1036 | `variableKeyCollision` *(CLI 1.5.0)* | Two `metadata.variables` entries in `exchange.json` flatten to the same dotted key (for example `"a.b"` and nested `a` → `b`). | Rename one entry, or use nested objects consistently. |
+| 1037 | `variableNameContainsColon` *(CLI 1.5.0)* | A `metadata.variables` key or category in `exchange.json` contains `:`, which isn't allowed. | Remove the `:` from the reported key or category. The message shows its full path. |
+| 1038 | `unsupportedAuthenticationKind` *(CLI 1.5.0)* | At deploy, an `a2a`/`mcp` connection (or its `card.authentication`) declares an authentication `kind` the CLI doesn't map. The schema usually rejects such kinds earlier. | Use `basic`, `apiKey`, `apikey-client-credentials`, `oauth2-client-credentials`, `oauth2-obo`, or `in-task-authorization-code`. `none` and `amazonSigv4` are LLM-connection kinds. |
 
 ### Publish Errors
 
@@ -193,8 +199,12 @@ Error codes are grouped by area:
 | 3032 | `missingGatewayForSharedSpace` | A shared-space deploy needs a gateway but none was given. | Provide a gateway with `--gateway`. |
 | 3033 | `invalidGAVFormat` | A GAV argument couldn't be parsed. | Use `groupId:assetId:version`. |
 | 3034 | `parentAssetNotFound` | A parent asset lookup failed. | Verify the parent asset exists in Exchange. |
+| 3035 | `tlsContextValidationError` *(CLI 1.5.0)* | At deploy, the CLI couldn't validate a connection's TLS context against the secret manager. | Read the secret-manager detail in the message, then check the connection's `tlsContext` and your access to the target environment's secrets manager. |
 | 3036 | `invalidAgentProtocol` | Agent metadata declares no protocol for a connection. | Declare a protocol for the connection in agent metadata. |
 | 3037 | `unsupportedAgentProtocol` | An agent exposes a non-A2A protocol only. | Connect only A2A (Agent2Agent) agents that use `a2a` or `a2a_v1`. |
+| 3038 | `tlsContextSecretGroupNotFound` *(CLI 1.5.0)* | The secret group referenced by a connection's TLS context wasn't found in the target environment's secrets manager. | Create the secret group in that environment, or fix the name in `tlsContext`. |
+| 3039 | `tlsContextNotFound` *(CLI 1.5.0)* | The TLS context referenced by a connection wasn't found in the named secret group. | Create the TLS context in that secret group, or fix the reference. |
+| 3040 | `secretTlsValidationFailed` *(CLI 1.5.0)* | *"Secret and TLS context validation failed before deploy"*, followed by one line per failure. | Fix each listed item and redeploy. |
 | 3045 | `incompatibleTargetVersionDeploy` | The `target/` artifact was built with an incompatible CLI version. | Rebuild with the current CLI, republish, then deploy. |
 | 3046 | `projectNotBuiltDeploy` | Deploy ran before build. | Run `agent-network project build` first. |
 | 3047 | `bulkApplyPolicyError` | Applying policies in API Manager failed. | Check policy GAV resolution and org entitlements. See *Dependent services → API Manager* below. |
@@ -210,6 +220,15 @@ Error codes are grouped by area:
 | 3057 | `undeployEnvironmentIdRequired` | `--gav` undeploy is missing the environment id. | Pass `--environment`. |
 | 3058 | `undeployEnvironmentRequired` | No environment was selected for undeploy. | Pass `--environment`. |
 | 3059 | `publicationBeforeDeploymentFailed` | The auto-publish step before deploy failed, so deploy aborted. | Fix the publish failure. See the embedded cause and Publish Errors above. |
+| 3060 | `llmAuthenticationKindNotSupported` *(CLI 1.5.0)* | An LLM connection's authentication kind isn't declared by the referenced LLM asset's metadata. | Use one of the supported kinds listed in the message, or publish an LLM asset that declares the kind. The legacy path (no `inputFormat`) accepts only `apiKey`. |
+| 3061 | `llmAssetRequiresV2` *(CLI 1.5.0)* | A V1 agent network references an LLM asset that declares `inputFormat`, which is V2-only. | Migrate the project to `agentNetwork: 2.0.0`, or reference an LLM asset without `inputFormat`. |
+| 3062 | `llmInputFormatRequiresAuthentication` *(CLI 1.5.0)* | An LLM asset declares `inputFormat` but no non-empty `authentication`. | Add `authentication` to the LLM metadata (`[{kind: none}]` for no auth) and republish it. |
+| 3063 | `llmModelNotDeclared` *(CLI 1.5.0)* | An LLM connection requests a model the referenced LLM asset doesn't declare in `models`. | Use one of the declared model IDs listed in the message, or add the model to the LLM asset and republish it. |
+| 3064 | `llmAuthenticationKindUnmapped` *(CLI 1.5.0)* | The LLM metadata declares the connection's authentication kind, but the CLI has no policy mapping for it. | Use one of the kinds listed in the message, or upgrade the CLI. |
+| 3065 | `llmAdapterPolicyNotFound` *(CLI 1.5.0)* | The adapter policy named by the LLM asset's `policyRef` wasn't found in Exchange. | Republish the LLM asset with a valid `policyRef`, or publish the adapter policy. |
+| 3066 | `llmAdapterPolicyLookupFailed` *(CLI 1.5.0)* | Resolving the LLM asset's adapter policy failed with something other than a 404 (for example a 5xx). | Retry. If it persists, check Exchange availability and your access to the policy. |
+| 3067 | `cardAuthenticationUpstreamsError` *(CLI 1.5.0)* | Configuring the separate agent and card upstreams for an `a2a` connection's `card.authentication` failed in API Manager. | The message says *"Agent card authentication may require Flex Gateway 1.5.0 or later."* Confirm the gateway version and that the connection is `a2a`, then read the nested `cause`. See *Dependent services → API Manager* below. |
+| 3068 | `outboundPolicyUpstreamLabelNotFound` *(CLI 1.5.0)* | An outbound policy was bound to a labeled upstream (`agent` or `card`) that API Manager didn't return. | Redeploy so the upstreams and routing match. If it persists, open a support case with the `requestId`. |
 
 ### Gateway Setup Errors
 
@@ -295,7 +314,7 @@ Error codes are grouped by area:
 | 11003 | `gatewayFlagRequired` | No gateway flag was supplied. | Pass `--gateway` or `--ingress-gw [--egress-gw]`. |
 | 11004 | `separateGatewayModeNotSupportedInSharedSpace` | Separate-gateway mode was used with a Shared Space. | Use `--gateway`, or pass a Private Space to `--target-space`. |
 | 11005 | `singleGatewayTargetSpaceMismatch` | `--target-space` conflicts with the gateway's target space. | Omit `--target-space`, or make it match the gateway. |
-| 11006 | `forceFlagRequiredWithJson` | `--json` was used without `--force`. | Add `--force` to skip interactive prompts. (In plugin v1.4.0 this applies to `undeploy`/`unpublish`, where `--force` exists but is hidden from CLI help. It skips the confirmation prompt, so run `--dry-run` first.) |
+| 11006 | `forceFlagRequiredWithJson` | `--json` was used without `--force`. | Add `--force` to skip interactive prompts. (In plugin v1.4.0 and v1.5.0 this applies to `undeploy`/`unpublish`, where `--force` exists but is hidden from CLI help. It skips the confirmation prompt, so run `--dry-run` first.) |
 
 ## Dependent services
 

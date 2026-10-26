@@ -146,7 +146,7 @@ config:
 
 ### LLM `kind:` casing
 
-Exact case: `"Gemini"` or `"OpenAI"`. The docs define only these two `.agent` LLM configurations, and the Azure/Bedrock notes sit under the OpenAI configuration. So Azure OpenAI and Bedrock OpenAI use `kind: "OpenAI"` (an inference from the docs' structure; confirm with a build); `AzureOpenai` only appears at `registry.llms.<id>.metadata.platform` (which accepts `Gemini`, `OpenAI`, or `AzureOpenai`).
+Exact case: `"Gemini"` or `"OpenAI"`. The docs define only these two `.agent` LLM configurations, and the Azure/Bedrock notes sit under the OpenAI configuration. So Azure OpenAI and Bedrock OpenAI use `kind: "OpenAI"` (an inference from the docs' structure; confirm with a build); `AzureOpenai` only appears at `registry.llms.<id>.metadata.platform` (which accepts `Gemini`, `OpenAI`, `AzureOpenai`, or a custom platform name).
 
 **Bedrock OpenAI** uses the OpenAI configuration (`kind: "OpenAI"`) but *"uses the `openai.` prefix for model names (for example, `openai.gpt-5.5`), which differs from the model names used with OpenAI and Azure OpenAI."* Its connection `url` is `https://bedrock-mantle.<YOUR_REGION>.api.aws/v1`.
 
@@ -339,7 +339,7 @@ orchestrator crossPlatformTriage:
 ## Connection rules (GA)
 
 - `url` is **optional** for all connection kinds (a2a, mcp, llm). Resolved at deploy time when omitted.
-- `authentication` is **required for `kind: llm`** connections, optional for `a2a` and `mcp`.
+- `authentication` is **required for `kind: llm`** connections, optional for `a2a` and `mcp`. LLM rules are in *LLM authentication* below.
 - `policies` on a connection (when present) is an object with `inbound` and `outbound` arrays:
 
   ```yaml
@@ -356,6 +356,93 @@ orchestrator crossPlatformTriage:
   ```
   The Beta shape (flat array of policy ids) is removed.
 
+### A2A connection `card` — separate credentials for the agent card
+
+Valid only on `kind: a2a`. Use it *"when the target agent requires different credentials to fetch its agent card than the connection's runtime `authentication`."* `card` has one optional property, `authentication` (any authentication object).
+
+```yaml
+context:
+  connections:
+    hr_system_agent:
+      kind: a2a
+      ref:
+        name: hr-system-agent
+      authentication:
+        kind: oauth2-client-credentials
+        clientId: runtime-client-id
+        clientSecret: runtime-client-secret
+        token:
+          url: https://my-oauth2-provider.com/token
+      card:
+        authentication:
+          kind: apiKey
+          apiKey: card-api-key
+```
+
+Values are the docs' placeholders. In a real project, parameterize secrets as `${...}` variables declared in `exchange.json` `metadata.variables` with `"secret": true`. The YAML reference's own sample of this is mis-indented (`authentication` sits one space off from `ref`) and **doesn't parse**. Use the indentation above. If deploy fails with CLI error 3067 `cardAuthenticationUpstreamsError`, the CLI message says *"Agent card authentication may require Flex Gateway 1.5.0 or later."*
+
+### A2A connection `interfaces` — protocol bindings under `url`
+
+Valid only on `kind: a2a`. Declares which bindings the target agent serves, each *"under a sub-path of the connection's `url`."* Allowed keys are `jsonrpc`, `http` (HTTP+JSON/REST), and `grpc`. Each one is optional, but if present it requires `basePath`.
+
+```yaml
+context:
+  connections:
+    hr_system_agent:
+      kind: a2a
+      ref:
+        name: hr-system-agent
+      url: https://hr-agent.example.com
+      interfaces:
+        jsonrpc:
+          basePath: /a2a
+        http:
+          basePath: /rest
+```
+
+### LLM authentication
+
+**LLM asset side (`registry.llms.<id>.metadata.authentication`, optional array).** It *"declares the authentication kinds that the LLM platform supports and can provide default configuration values."* If it's absent, *"the LLM platform's authentication requirements are unknown."* An array with only `kind: none` *"explicitly declares that the platform doesn't require authentication."* Declarable kinds: `none`, `basic`, `apiKey`, `apikey-client-credentials`, `oauth2-client-credentials`, `amazonSigv4`, `custom`.
+
+```yaml
+registry:
+  llms:
+    my-llm:
+      info:
+        label: My LLM
+      metadata:
+        platform: SomeCustomPlatform
+        authentication:
+          - kind: oauth2-client-credentials
+            defaultConfiguration:
+              token:
+                url: https://auth.example.com/token
+```
+
+**Connection side (`context.connections.<id>.authentication`, required on `kind: llm`).** Supported kinds are `none`, `basic`, `apiKey`, `apikey-client-credentials`, `oauth2-client-credentials`, and `amazonSigv4`. *"The authentication kind must be one that the referenced LLM asset declares in its metadata."* LLM connections **don't** support `oauth2-obo`, `in-task-authorization-code`, or `custom`.
+
+```yaml
+context:
+  connections:
+    my-llm-connection:
+      kind: llm
+      ref:
+        name: my-llm
+      url: https://api.example.com/v1
+      authentication:
+        kind: oauth2-client-credentials
+        clientId: my-client-id
+        clientSecret: my-client-secret
+        token:
+          url: https://auth.example.com/token
+        scopes:
+          - my.custom.scope
+```
+
+Values are the docs' placeholders; parameterize real secrets as `${...}` variables.
+
+Related CLI 1.5.0 deploy errors: 3060 `llmAuthenticationKindNotSupported` (the connection uses a kind the LLM asset doesn't declare; the message lists the supported kinds), 3062 `llmInputFormatRequiresAuthentication`, 3063 `llmModelNotDeclared` (the connection requests a model the LLM asset doesn't list in `models`). See `troubleshooting.md`.
+
 ## Authentication kind casing (GA)
 
 | Auth kind | Casing |
@@ -366,6 +453,14 @@ orchestrator crossPlatformTriage:
 | OAuth2 OBO | `oauth2-obo` |
 | Basic auth | `basic` |
 | In-task authorization code | `in-task-authorization-code` |
+| No authentication | `none` |
+| Amazon Signature Version 4 | `amazonSigv4` |
+
+`none` *"explicitly declare[s] that a connection doesn't require authentication. This is different from omitting the `authentication` object."*
+
+`amazonSigv4` signs outbound requests with AWS SigV4. Its fields are `awsAccessKeyId`, `awsSecretAccessKey`, `awsSessionToken` (sent as `X-Amz-Security-Token`), `awsRegion` (default `us-east-1`; *"must match the upstream endpoint region"*), and `serviceName` (default `bedrock`). All are optional: *"If you don't provide static credentials, credentials are resolved from the platform's AWS credential provider chain."* Secrets go through `${...}` variables like any other credential.
+
+**Scope `none` and `amazonSigv4` to `kind: llm` connections.** The YAML reference lists them as LLM connection kinds. On `a2a`/`mcp` connections (and `card.authentication`), the V2 JSON schema allows only `basic`, `apiKey`, `apikey-client-credentials`, `oauth2-client-credentials`, `oauth2-obo`, and `in-task-authorization-code`, so it rejects them. If one still reaches deploy, CLI 1.5.0 throws error 1038 `unsupportedAuthenticationKind`.
 
 Default to `apiKey`, `oauth2-client-credentials`, `oauth2-obo`. `in-task-authorization-code` is for OAuth2 step-up — don't emit unless explicitly requested.
 
@@ -512,7 +607,8 @@ Per asset, atomically:
 - **Broker id** (key under `brokers:`): **lowercase snake_case.** The YAML reference: *"Keys: identifiers using only lowercase `a`–`z`, `0`–`9`, and non-trailing underscores (`_`)."* So `it_help_investigation` ✓; `itHelpInvestigation` / `it-help-investigation` ✗ per the docs (the JSON schema and CLI error 7012 are looser, but follow the docs). Keep it short — error 7014 `brokerNameTooLong`: *"The broker id exceeds the deployment-name length limit."* The `.agent` *filename* is independent (kebab-case is fine — `it-help-investigation.agent`).
 - **Trigger `target:`**: `brokers://<broker-id>/a2a` where `<broker-id>` matches the YAML key exactly. A mismatch is build error 1021 `brokerIdMismatch`.
 - **Asset names are org-wide unique.** Each broker, agent, and MCP server publishes as an Exchange asset named after its key. *"Asset names must be unique across all projects in your organization."* Reusing a name another project owns fails publish with error 2006. The project `assetId` must also stay short (error 1032 `assetIdTooLongForDeployment`); CLI `--asset-id` accepts `A-Z a-z 0-9 _ -`.
-- **Variables** (in `exchange.json.metadata.variables`): `<assetId>.url`, `<assetId>.apiKey`, etc.
+- **Broker card `pushNotifications`**: always `false`. CLI 1.5.0 `project build` rejects `capabilities.pushNotifications: true` on `brokers.<id>.interfaces.a2a.card` with error 1035 `pushNotificationNotSupported`, even though the docs' IT example still shows `true`.
+- **Variables** (in `exchange.json.metadata.variables`): `<assetId>.url`, `<assetId>.apiKey`, etc. CLI 1.5.0 build checks: a key or category containing `:` fails with 1037 `variableNameContainsColon`, and two entries that flatten to the same dotted key (`"a.b"` alongside nested `a` → `b`) fail with 1036 `variableKeyCollision`. Pick one style, nested or dotted, and use it consistently.
 
 ### Stage 4: Bind to nodes
 
@@ -674,6 +770,16 @@ Two kinds of fixes:
 
 Loop until clean.
 
+### Optional — Deploy and test locally (Anypoint Code Builder, BETA)
+
+Source: `af-local-deploy-and-test`. Anypoint Code Builder can deploy the whole project locally and chat with each broker over A2A, *"without publishing or deploying it."* It's an **IDE feature, not a public CLI command**, so point the user to it rather than running it yourself.
+
+- **Prereqs:** Docker installed. Sign in to Anypoint Code Builder, then restart VS Code to load the feature.
+- **Start it** from the activity bar (*Deploy and test locally* icon), the Explorer context menu (*Deploy and Test Locally*), or the Command Palette (*MuleSoft: Deploy and Test Locally*). With several agent network projects in the workspace, *"the context menu action deploys the last active project instead of the one you right-clicked"*. Use the graph's *Run* button or the Command Palette instead.
+- **Variables:** on the first run the terminal prompts for the `exchange.json` variables and reuses them afterward. *"Variables and secrets are stored in plain text on your local machine."*
+- **Test panel:** pick a broker from the header dropdown, view its agent card, and chat. Each chat uses one context ID, and *New Chat* starts a fresh one. *Details* on a response shows state, IDs, and raw request/response JSON. Header actions are *New Chat*, *Redeploy* (clears chat history), *Stop*, and *Export logs*.
+- **Logs** stream to the VS Code Output panel and Debug Console.
+
 ### Step 8 — Publish
 
 **CLI:** `anypoint-cli-agent-fabric-plugin agent-network project publish [--path <projectPath>] [--environment <env>] [--debug] [--json]`.
@@ -719,12 +825,12 @@ After publish, surface published asset URLs.
 - **Single-gateway mode (recommended):** `-g/--gateway <name>`. `-i/--ingress-gw <name>` on its own also selects single-gateway mode with that gateway. *"When no gateway flags are provided, deploy defaults to single-gateway mode using agent-network-gw"*. For the shared space, pass `-g agent-network-shared-gw`.
 - **Separate-gateways mode:** `-i/--ingress-gw <name>` **with** `-e/--egress-gw <name>`. `-e` requires `-i`. `-g` is mutually exclusive with `-i`/`-e`.
 
-**CLI deploy:** `anypoint-cli-agent-fabric-plugin agent-network project deploy [flags]` (plugin v1.4.0 flags):
+**CLI deploy:** `anypoint-cli-agent-fabric-plugin agent-network project deploy [flags]` (plugin v1.5.0 flags):
 - `--path <projectPath>` (default `.`), `--environment <name>` (or `ANYPOINT_ENV`)
 - `-g` / `-i` / `-e`: see gateway modes above.
 - `-t/--target-space <name>`: in single-gateway mode it's optional, and *"when provided it must match the gateway's target space (validated, not used for lookup)"*. In separate mode it defaults to `agent-network-space`.
 - `--property name:value` (repeatable). Injects env-specific secrets/config, e.g. `--property openai.apiKey:$OPENAI_API_KEY` or `--property myAgent.url:https://api.example.com`.
-- `--deployment-properties-file <path>` **or** `--deployment-property <scope>:<name>:<value>` (repeatable). These are typed deployment settings such as broker vCores, `resources.*`, `logging.level`, and `runtimeVersion`. The two flags are mutually exclusive. See *Broker resources* below.
+- `--deployment-properties-file <path>` **or** `--deployment-property <scope>:<name>:<value>` (repeatable). These are typed deployment settings such as broker vCores, `replicas`, `resources.*`, `logging.level`, and `runtimeVersion`. The two flags are mutually exclusive. See *Broker resources* below.
 - `--disable-autopublish`: *"Disable automatic publishing when lock file is not found."* Without this flag, deploy publishes for you if no lock file exists.
 - `--dont-wait-for-agent-network`: CI, return immediately.
 - `--disable-tracing`: CI/test, skip tracing.
@@ -759,6 +865,19 @@ brokers:
 ```
 
 Inline equivalent, one setting per flag: `--deployment-property brokers:resources:cpu:reserved:50m`.
+
+### Broker replicas (CLI 1.5.0+)
+
+Source: CLI v1.5.0 README. *"Replica count defaults to `1`."* Set it inline with `--deployment-property brokers:replicas:3`, or in the deployment properties file as a number:
+
+```yaml
+brokers:
+  replicas: 3
+```
+
+- *"`replicas` must be an integer of at least `1`; quoted YAML strings are rejected."* So write `replicas: 3`, not `replicas: "3"`.
+- It *"applies to Agent Graph and Mule runtime applications on CloudHub 2.0 and Runtime Fabric, for both new deployments and redeployments, not to gateway infrastructure."*
+- *"Target capacity and platform quotas still apply; deployment readiness polling does not guarantee that every requested replica is running."*
 
 ### Conversational memory (multi-turn A2A)
 
@@ -840,7 +959,7 @@ The skill works in Cursor, standalone Claude Code, Codex — anywhere without Mu
 
 ### Step 1 — Scaffold
 
-**CLI:** `anypoint-cli-agent-fabric-plugin agent-network project create --name <project-name> --output-dir <parent-dir> --create-dir`. Key flags (plugin v1.4.0):
+**CLI:** `anypoint-cli-agent-fabric-plugin agent-network project create --name <project-name> --output-dir <parent-dir> --create-dir`. Key flags (plugin v1.5.0; unchanged from v1.4.0):
 - `-n, --name=<value>` (required) — project name; becomes the default `assetId`.
 - `-o, --output-dir=<value>` — parent directory for the new project (default: current dir).
 - `--[no-]create-dir` — create a new directory at `output-dir` named after the project (on by default in v1.4.0; `--no-create-dir` writes files directly into `output-dir`).

@@ -211,7 +211,7 @@ brokers:
           version: 1.0.0
           capabilities:
             streaming: false
-            pushNotifications: true
+            pushNotifications: false   # the docs example says true; CLI 1.5.0 build rejects true (error 1035)
           defaultInputModes:
             - text/plain
           defaultOutputModes:
@@ -564,3 +564,4 @@ These are the things the published docs don't make obvious. Read the docs for ev
     ```
 
     `protocolVersion` must match the agent's actual runtime A2A version. A mismatch makes the platform apply the wrong Agent Card policy and skip the egress-proxy URL rewrite, so the call fails at runtime with `401 Unauthorized`, not a version error.
+15. **Broker cards must set `pushNotifications: false`.** The docs page still shows `pushNotifications: true` on this broker, and the YAML reference allows `true` or `false`. But CLI 1.5.0 `project build` fails with error 1035 `pushNotificationNotSupported`: *"Broker '<id>' declares 'capabilities.pushNotifications: true' in 'interfaces.a2a.card', but push notifications are not supported. Set it to false and try again."* This example uses `false`. The check covers only broker cards (`brokers.<id>.interfaces.a2a.card`), not registry agent cards.
